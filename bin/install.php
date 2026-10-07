@@ -18,6 +18,10 @@ foreach (preg_split('/;\s*\n/', $schema) ?: [] as $statement) {
     }
     $pdo->exec($statement);
 }
+$grid = $pdo->query("SHOW COLUMNS FROM releases LIKE 'cover_grid_path'")->fetch();
+if ($grid === false) {
+    $pdo->exec('ALTER TABLE releases ADD COLUMN cover_grid_path VARCHAR(500) NULL AFTER cover_path');
+}
 echo "Schema ready.\n";
 
 if (in_array('--import', $argv, true)) {

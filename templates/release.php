@@ -69,6 +69,23 @@ if ($release['release_date_precision'] === 'day' && $release['release_year'] && 
       <?php endif; ?>
     </div>
   </div>
+  <?php
+    $facts = $release['facts'] ?? [];
+    $factLine = array_filter([
+        implode(' · ', $facts['genres'] ?? []),
+        implode(' · ', $facts['styles'] ?? []),
+        $facts['country'] ?? '',
+    ]);
+  ?>
+  <?php if ($factLine): ?><p class="meta"><?= e(implode(' · ', $factLine)) ?></p><?php endif; ?>
+  <?php if (!empty($facts['credits'])): ?>
+    <h2>Credits</h2>
+    <ul class="lined">
+      <?php foreach ($facts['credits'] as $credit): ?>
+        <li><span><?= e($credit['role'] !== '' ? $credit['role'] : 'Credit') ?></span><span><?= e($credit['name']) ?></span></li>
+      <?php endforeach; ?>
+    </ul>
+  <?php endif; ?>
   <?php if (trim(strip_tags($release['description_html'] ?? '')) !== ''): ?>
     <div class="prose"><?= $release['description_html'] ?></div>
   <?php endif; ?>

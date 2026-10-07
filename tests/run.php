@@ -49,19 +49,23 @@ $db = app_db();
 $catalog = new CatalogRepository($db, app_config());
 
 $publishedArtists = (int) $db->one("SELECT COUNT(*) AS c FROM artists WHERE status='published'")['c'];
+$archiveArtists = (int) $db->one("SELECT COUNT(*) AS c FROM artists WHERE status='published' AND image_source='legacy'")['c'];
 $draftArtists = (int) $db->one("SELECT COUNT(*) AS c FROM artists WHERE status='draft'")['c'];
 $publishedReleases = (int) $db->one("SELECT COUNT(*) AS c FROM releases WHERE status='published'")['c'];
-check($publishedArtists === 18, '18 published artists');
+$archiveReleases = (int) $db->one("SELECT COUNT(*) AS c FROM releases WHERE status='published' AND source='legacy'")['c'];
+check($archiveArtists === 18, '18 published archive artists');
 check($draftArtists === 3, '3 draft artists stay in the database');
-check($publishedReleases === 39, '39 published releases');
+check($archiveReleases === 39, '39 published archive releases');
 check($catalog->artist('gangbanggang') === null, 'draft artist is not public');
 
 $all = $catalog->search([]);
-check($all['total'] === 39, 'unfiltered total is 39');
-check(count($all['items']) === 24, 'first page has 24 releases');
-check($all['pages'] === 2, 'pagination has two pages');
+check($all['total'] === $publishedReleases, 'unfiltered total matches published releases');
+check(count($all['items']) === min(24, $publishedReleases), 'first page is capped at 24');
+$expectedPages = max(1, (int) ceil($publishedReleases / 24));
+check($all['pages'] === $expectedPages, 'pagination page count matches the catalog');
 $page2 = $catalog->search(['page' => 2]);
-check(count($page2['items']) === 15, 'second page has the remainder');
+$remainder = $publishedReleases - 24;
+check($expectedPages === 1 || count($page2['items']) === min(24, $remainder), 'second page has the next slice');
 $ids = array_map(static fn ($row) => $row['id'], $all['items']);
 foreach ($page2['items'] as $row) {
     if (in_array($row['id'], $ids, true)) {
@@ -69,7 +73,8 @@ foreach ($page2['items'] as $row) {
         break;
     }
 }
-check(count(array_unique(array_merge($ids, array_column($page2['items'], 'id')))) === 39, 'both pages cover the catalog once');
+$covered = count(array_unique(array_merge($ids, array_column($page2['items'], 'id'))));
+check($expectedPages > 2 || $covered === $publishedReleases, 'the loaded pages cover the catalog once');
 
 $supervision = $catalog->search(['artist' => 'supervision']);
 check($supervision['total'] === 5, 'artist filter Supervision');
@@ -114,19 +119,33 @@ try {
 $after = $db->one('SELECT title FROM releases WHERE slug="right-now"');
 check($after['title'] === $before['title'], 'failed transaction does not replace the title');
 
-$stale = [
+$remote = [
     'cover_source' => 'discogs',
     'cover_path' => null,
-    'cover_remote_url' => 'https://example.test/cover.jpg',
+    'cover_grid_path' => null,
+    'cover_remote_url' => 'https://i.discogs.com/example.jpg',
     'cover_attribution' => 'Discogs',
     'cover_page_url' => 'https://www.discogs.com/release/1',
-    'cover_fetched_at' => date('Y-m-d H:i:s', time() - 5 * 3600),
+    'cover_fetched_at' => date('Y-m-d H:i:s'),
 ];
-check($catalog->cover($stale) === null, 'discogs cover older than four hours is hidden');
-$stale['cover_fetched_at'] = date('Y-m-d H:i:s');
-check(($catalog->cover($stale)['source'] ?? '') === 'discogs', 'fresh discogs cover is shown');
+check($catalog->cover($remote) === null, 'discogs covers are served from local files only');
+$localDiscogs = $remote;
+$localDiscogs['cover_path'] = 'covers/discogs/1.jpg';
+$localDiscogs['cover_grid_path'] = 'covers/discogs/1-640.jpg';
+check(str_contains((string) ($catalog->cover($localDiscogs)['url'] ?? ''), '/media/covers/discogs/1.jpg'), 'detail cover uses the stored original');
+check(str_contains((string) ($catalog->cover($localDiscogs, 'grid')['url'] ?? ''), '/media/covers/discogs/1-640.jpg'), 'grid uses the smaller derived cover');
 $legacy = ['cover_source' => 'legacy', 'cover_path' => 'covers/example.jpg', 'cover_remote_url' => null, 'cover_fetched_at' => null];
-check(str_contains((string) ($catalog->cover($legacy)['url'] ?? ''), '/media/covers/example.jpg'), 'legacy covers do not expire');
+check(str_contains((string) ($catalog->cover($legacy)['url'] ?? ''), '/media/covers/example.jpg'), 'legacy covers stay local');
+$img = imagecreatetruecolor(900, 400);
+imagefilledrectangle($img, 0, 0, 899, 399, imagecolorallocate($img, 200, 20, 40));
+ob_start();
+imagepng($img);
+$png = (string) ob_get_clean();
+imagedestroy($img);
+$coverDir = sys_get_temp_dir() . '/bs-cover-test-' . bin2hex(random_bytes(3));
+$saved = (new App\Discogs\Covers($coverDir, 'test'))->fromBytes('42', $png);
+$gridInfo = $saved ? @getimagesize($coverDir . '/storage/uploads/' . $saved['grid']) : false;
+check($saved !== null && is_file($coverDir . '/storage/uploads/' . $saved['full']) && $gridInfo && $gridInfo[0] === 640, 'largest cover is kept and a 640px file is generated');
 
 $bioBefore = $db->one('SELECT bio_html FROM artists WHERE slug="supervision"');
 $db->exec('UPDATE artists SET bio_html=?, editorial_locked=1 WHERE slug="supervision"', ['<p>LOCKED-BIO</p>']);
@@ -249,11 +268,12 @@ foreach ($idsToDrop as $row) {
     $db->exec('DELETE FROM releases WHERE id=?', [$row['id']]);
 }
 $db->exec("DELETE FROM external_ids WHERE external_id IN ('9001','9002','9003','9004','88001','88002','88003','88004','70001')");
+$db->exec("DELETE FROM provider_records WHERE external_id IN ('9001','9002','9003','9004')");
 $db->exec('DELETE FROM artists WHERE name LIKE ?', [$marker . '%']);
 $db->exec('DELETE FROM import_reviews WHERE external_id IN ("9001","9002","9003","9004")');
 $left = (int) $db->one('SELECT COUNT(*) AS c FROM releases WHERE title LIKE ?', [$marker . '%'])['c'];
 check($left === 0, 'fixture releases removed');
-check((int) $db->one("SELECT COUNT(*) AS c FROM releases WHERE status='published'")['c'] === 39, 'public catalog count restored');
+check((int) $db->one("SELECT COUNT(*) AS c FROM releases WHERE status='published'")['c'] === $publishedReleases, 'public catalog count restored');
 
 echo $failed === 0 ? "ALL PASSED\n" : "$failed FAILED\n";
 exit($failed === 0 ? 0 : 1);

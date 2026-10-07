@@ -117,6 +117,7 @@ final class CatalogRepository
             [$row['id']]
         );
         $row['related'] = $this->related($row);
+        $row['facts'] = $this->discogsFacts((int) $row['id']);
         return $row;
     }
 
@@ -188,26 +189,22 @@ final class CatalogRepository
         return $rows;
     }
 
-    public function cover(array $release): ?array
+    public function cover(array $release, string $size = 'full'): ?array
     {
-        $source = $release['cover_source'] ?? '';
-        if (!empty($release['cover_path']) && in_array($source, ['legacy', 'upload'], true)) {
-            return [
-                'url' => '/media/' . ltrim((string) $release['cover_path'], '/'),
-                'source' => $source,
-                'attribution' => null,
-                'page' => null,
-            ];
+        $path = (string) ($release['cover_path'] ?? '');
+        if ($size === 'grid' && !empty($release['cover_grid_path'])) {
+            $path = (string) $release['cover_grid_path'];
         }
-        if ($source === 'discogs' && !empty($release['cover_remote_url']) && $this->discogsCoverFresh($release)) {
-            return [
-                'url' => (string) $release['cover_remote_url'],
-                'source' => 'discogs',
-                'attribution' => $release['cover_attribution'] ?: 'Discogs',
-                'page' => $release['cover_page_url'] ?: null,
-            ];
+        if ($path === '') {
+            return null;
         }
-        return null;
+        $source = (string) ($release['cover_source'] ?? '');
+        return [
+            'url' => '/media/' . ltrim($path, '/'),
+            'source' => $source,
+            'attribution' => $source === 'discogs' ? ($release['cover_attribution'] ?: 'Discogs') : null,
+            'page' => $source === 'discogs' ? ($release['cover_page_url'] ?: null) : null,
+        ];
     }
 
     public function discogsCoverFresh(array $release): bool
@@ -218,6 +215,49 @@ final class CatalogRepository
         $fetched = strtotime((string) $release['cover_fetched_at']);
         $hours = (int) ($this->config['discogs']['max_age_hours'] ?? 4);
         return $fetched !== false && $fetched >= time() - ($hours * 3600);
+    }
+
+    private function discogsFacts(int $releaseId): array
+    {
+        $rows = $this->db->all(
+            "SELECT p.payload_json FROM provider_records p
+             JOIN external_ids e ON e.provider = p.provider AND e.entity_type = p.entity_type AND e.external_id = p.external_id
+             WHERE e.provider = 'discogs' AND e.entity_type = 'release' AND e.entity_id = ?",
+            [$releaseId]
+        );
+        $genres = [];
+        $styles = [];
+        $credits = [];
+        $country = '';
+        foreach ($rows as $row) {
+            $detail = json_decode((string) $row['payload_json'], true);
+            if (!is_array($detail)) {
+                continue;
+            }
+            foreach ($detail['genres'] ?? [] as $genre) {
+                $genres[(string) $genre] = (string) $genre;
+            }
+            foreach ($detail['styles'] ?? [] as $style) {
+                $styles[(string) $style] = (string) $style;
+            }
+            if ($country === '' && !empty($detail['country'])) {
+                $country = (string) $detail['country'];
+            }
+            foreach ($detail['extraartists'] ?? [] as $artist) {
+                $name = trim((string) ($artist['name'] ?? ''));
+                $role = trim((string) ($artist['role'] ?? ''));
+                if ($name === '') {
+                    continue;
+                }
+                $credits[$role . '|' . $name] = ['role' => $role, 'name' => $name];
+            }
+        }
+        return [
+            'genres' => array_values($genres),
+            'styles' => array_values($styles),
+            'country' => $country,
+            'credits' => array_values($credits),
+        ];
     }
 
     private function related(array $release): array

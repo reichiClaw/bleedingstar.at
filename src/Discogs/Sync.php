@@ -8,8 +8,11 @@ use App\Database;
 
 final class Sync
 {
-    public function __construct(private Database $db, private Client $client, private array $config)
+    public function __construct(private Database $db, private Client $client, private array $config, private string $root = '')
     {
+        if ($this->root === '') {
+            $this->root = app_root();
+        }
     }
 
     public function importLabel(bool $dryRun, ?int $maxPages = null): array
@@ -72,20 +75,13 @@ final class Sync
             if (!$releaseId) {
                 continue;
             }
-            $image = $this->primaryImage($detail);
             if ($dryRun) {
                 $stats['updated']++;
                 continue;
             }
-            if ($image) {
-                $this->db->exec(
-                    'UPDATE releases SET cover_remote_url = IF(cover_source = "discogs", ?, cover_remote_url),
-                     cover_fetched_at = IF(cover_source = "discogs", NOW(), cover_fetched_at),
-                     cover_page_url = IF(cover_source = "discogs", ?, cover_page_url)
-                     WHERE id = ? AND cover_source = "discogs"',
-                    [$image, $detail['uri'] ?? null, $releaseId]
-                );
-            }
+            $this->savePayload($row['external_id'], $detail);
+            $stored = $this->archiveCover($row['external_id'], $detail);
+            $this->applyStoredCover($releaseId, $stored, $detail);
             $stats['updated']++;
         }
         return $stats;
@@ -99,11 +95,16 @@ final class Sync
             $stats['skipped']++;
             return;
         }
+        $stored = null;
+        if (!$dryRun) {
+            $this->savePayload($externalId, $detail);
+            $stored = $this->archiveCover($externalId, $detail);
+        }
         $masterId = (string) ($detail['master_id'] ?? '');
         $groupedId = $masterId !== '' && $masterId !== '0' ? $this->entityId('master', $masterId) : null;
         if ($existing || $groupedId) {
             if (!$dryRun) {
-                $this->updateExisting((int) ($existing ?: $groupedId), $detail, $externalId, $masterId);
+                $this->updateExisting((int) ($existing ?: $groupedId), $detail, $externalId, $masterId, $stored);
             }
             $stats['updated']++;
             return;
@@ -112,7 +113,7 @@ final class Sync
         $byUpc = $upc ? $this->db->one('SELECT release_id FROM release_formats WHERE upc = ? LIMIT 1', [$upc]) : null;
         if ($byUpc) {
             if (!$dryRun) {
-                $this->linkExisting((int) $byUpc['release_id'], $detail, $externalId, $masterId, $upc);
+                $this->linkExisting((int) $byUpc['release_id'], $detail, $externalId, $masterId, $upc, $stored);
             }
             $stats['updated']++;
             return;
@@ -126,61 +127,62 @@ final class Sync
             return;
         }
         if (!$dryRun) {
-            $this->createRelease($detail, $externalId, $masterId, $upc);
+            $this->createRelease($detail, $externalId, $masterId, $upc, $stored);
         }
         $stats['created']++;
     }
 
-    private function updateExisting(int $releaseId, array $detail, string $externalId, string $masterId): void
+    private function updateExisting(int $releaseId, array $detail, string $externalId, string $masterId, ?array $stored): void
     {
         $this->rememberIds($releaseId, $externalId, $masterId);
         $row = $this->db->one('SELECT editorial_locked, cover_source FROM releases WHERE id = ?', [$releaseId]);
         if (!$row || (int) $row['editorial_locked'] === 1) {
             return;
         }
-        $image = $this->primaryImage($detail);
-        if ($image && ($row['cover_source'] === 'discogs' || $row['cover_source'] === null)) {
-            $this->db->exec(
-                'UPDATE releases SET cover_source = "discogs", cover_remote_url = ?, cover_attribution = ?, cover_page_url = ?, cover_fetched_at = NOW(), updated_at = NOW() WHERE id = ? AND (cover_source IS NULL OR cover_source = "discogs")',
-                [$image, 'Cover: Discogs', $detail['uri'] ?? null, $releaseId]
-            );
-        }
+        $this->applyStoredCover($releaseId, $stored, $detail);
+        $this->fillNotes($releaseId, $detail);
         $this->addDiscogsLink($releaseId, $detail);
+        $this->addVideos($releaseId, $detail);
         $this->addFormats($releaseId, $detail);
+        $count = $this->db->one('SELECT COUNT(*) AS c FROM tracks WHERE release_id = ?', [$releaseId]);
+        if ((int) ($count['c'] ?? 0) === 0) {
+            $this->replaceTracks($releaseId, $detail);
+        }
     }
 
-    private function linkExisting(int $releaseId, array $detail, string $externalId, string $masterId, ?string $upc): void
+    private function linkExisting(int $releaseId, array $detail, string $externalId, string $masterId, ?string $upc, ?array $stored = null): void
     {
         $this->rememberIds($releaseId, $externalId, $masterId);
         $this->addFormats($releaseId, $detail, $upc);
         $this->addDiscogsLink($releaseId, $detail);
-        $row = $this->db->one('SELECT cover_path, editorial_locked FROM releases WHERE id = ?', [$releaseId]);
-        $image = $this->primaryImage($detail);
-        if ($row && !$row['cover_path'] && !(int) $row['editorial_locked'] && $image) {
-            $this->db->exec(
-                'UPDATE releases SET cover_source="discogs", cover_remote_url=?, cover_attribution="Cover: Discogs", cover_page_url=?, cover_fetched_at=NOW() WHERE id=?',
-                [$image, $detail['uri'] ?? null, $releaseId]
-            );
+        $this->addVideos($releaseId, $detail);
+        $this->fillNotes($releaseId, $detail);
+        if ($stored === null) {
+            $stored = $this->archiveCover($externalId, $detail);
         }
+        $this->applyStoredCover($releaseId, $stored, $detail);
     }
 
-    private function createRelease(array $detail, string $externalId, string $masterId, ?string $upc): void
+    private function createRelease(array $detail, string $externalId, string $masterId, ?string $upc, ?array $stored): void
     {
         $date = $this->parseReleased((string) ($detail['released'] ?? ''), (int) ($detail['year'] ?? 0));
         $title = trim((string) ($detail['title'] ?? 'Ohne Titel'));
         $slug = $this->freeSlug(slugify($title));
         $type = $this->typeFromFormats($detail);
-        $image = $this->primaryImage($detail);
         $id = $this->db->insert(
-            'INSERT INTO releases (slug, title, release_year, release_month, release_day, release_date_precision, release_type, status, cover_source, cover_remote_url, cover_attribution, cover_page_url, cover_fetched_at, source, created_at, updated_at)
-             VALUES (?,?,?,?,?,?,?,"published",?,?,?,?,?,"discogs",NOW(),NOW())',
+            'INSERT INTO releases (slug, title, description_html, release_year, release_month, release_day, release_date_precision, release_type, status, cover_source, cover_path, cover_grid_path, cover_attribution, cover_page_url, cover_fetched_at, source, created_at, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,"published",?,?,?,?,?,?,"discogs",NOW(),NOW())',
             [
-                $slug, $title, $date['year'], $date['month'], $date['day'], $date['precision'], $type,
-                $image ? 'discogs' : null,
-                $image,
-                $image ? 'Cover: Discogs' : null,
-                $image ? ($detail['uri'] ?? null) : null,
-                $image ? date('Y-m-d H:i:s') : null,
+                $slug,
+                $title,
+                $this->notesHtml($detail) ?: null,
+                $date['year'], $date['month'], $date['day'], $date['precision'], $type,
+                $stored ? 'discogs' : null,
+                $stored['full'] ?? null,
+                $stored['grid'] ?? null,
+                $stored ? 'Cover: Discogs' : null,
+                $stored ? ($detail['uri'] ?? null) : null,
+                $stored ? date('Y-m-d H:i:s') : null,
             ]
         );
         $this->rememberIds($id, $externalId, $masterId);
@@ -188,6 +190,7 @@ final class Sync
         $this->replaceTracks($id, $detail);
         $this->addFormats($id, $detail, $upc);
         $this->addDiscogsLink($id, $detail);
+        $this->addVideos($id, $detail);
     }
 
     private function queueReview(string $externalId, int $candidateId, array $detail, string $reason): void
@@ -329,6 +332,125 @@ final class Sync
             );
             $upc = null;
         }
+    }
+
+    private function savePayload(string $externalId, array $detail): void
+    {
+        $json = json_encode($detail, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            return;
+        }
+        $this->db->exec(
+            'INSERT INTO provider_records (provider, entity_type, external_id, payload_json, fetched_at)
+             VALUES ("discogs","release",?,?,NOW())
+             ON DUPLICATE KEY UPDATE payload_json = VALUES(payload_json), fetched_at = NOW()',
+            [$externalId, $json]
+        );
+    }
+
+    private function archiveCover(string $externalId, array $detail): ?array
+    {
+        $image = $this->largestImage($detail);
+        if (!$image || empty($image['uri'])) {
+            return null;
+        }
+        $covers = new Covers($this->root, (string) ($this->config['user_agent'] ?? 'BleedingStarCatalog/1.0'));
+        return $covers->store($externalId, (string) $image['uri']);
+    }
+
+    private function applyStoredCover(int $releaseId, ?array $stored, array $detail): void
+    {
+        if (!$stored || empty($stored['full'])) {
+            return;
+        }
+        $row = $this->db->one('SELECT cover_path, cover_source, editorial_locked FROM releases WHERE id = ?', [$releaseId]);
+        if (!$row) {
+            return;
+        }
+        $own = !empty($row['cover_path']) && in_array($row['cover_source'], ['legacy', 'upload'], true);
+        if ($own || ((int) $row['editorial_locked'] === 1 && !empty($row['cover_path']))) {
+            return;
+        }
+        $this->db->exec(
+            'UPDATE releases SET cover_source = "discogs", cover_path = ?, cover_grid_path = ?, cover_remote_url = NULL, cover_attribution = "Cover: Discogs", cover_page_url = ?, cover_fetched_at = NOW() WHERE id = ?',
+            [$stored['full'], $stored['grid'], $detail['uri'] ?? null, $releaseId]
+        );
+    }
+
+    private function fillNotes(int $releaseId, array $detail): void
+    {
+        $html = $this->notesHtml($detail);
+        if ($html === '') {
+            return;
+        }
+        $this->db->exec(
+            'UPDATE releases SET description_html = ? WHERE id = ? AND (description_html IS NULL OR description_html = "")',
+            [$html, $releaseId]
+        );
+    }
+
+    private function notesHtml(array $detail): string
+    {
+        $notes = trim((string) ($detail['notes'] ?? ''));
+        if ($notes === '') {
+            return '';
+        }
+        $html = '';
+        foreach (preg_split("/\n{2,}/", str_replace("\r", '', $notes)) ?: [] as $part) {
+            $part = trim($part);
+            if ($part === '') {
+                continue;
+            }
+            $html .= '<p>' . nl2br(e($part)) . '</p>';
+        }
+        return $html;
+    }
+
+    private function addVideos(int $releaseId, array $detail): void
+    {
+        foreach ($detail['videos'] ?? [] as $video) {
+            $url = trim((string) ($video['uri'] ?? ''));
+            if (!preg_match('#^https?://#i', $url)) {
+                continue;
+            }
+            $exists = $this->db->one(
+                'SELECT id FROM release_links WHERE release_id = ? AND url = ? LIMIT 1',
+                [$releaseId, $url]
+            );
+            if ($exists) {
+                continue;
+            }
+            $label = trim((string) ($video['title'] ?? ''));
+            $this->db->exec(
+                'INSERT INTO release_links (release_id, label, url, provider, manual) VALUES (?,?,?,"youtube",0)',
+                [$releaseId, $label !== '' ? $label : 'Video', $url]
+            );
+        }
+    }
+
+    private function largestImage(array $detail): ?array
+    {
+        $pool = [];
+        foreach ($detail['images'] ?? [] as $image) {
+            if (!empty($image['uri'])) {
+                $pool[] = $image;
+            }
+        }
+        $primary = array_values(array_filter(
+            $pool,
+            static fn (array $image): bool => ($image['type'] ?? '') === 'primary'
+        ));
+        $candidates = $primary !== [] ? $primary : $pool;
+        $best = null;
+        $bestArea = -1;
+        foreach ($candidates as $image) {
+            $area = (int) ($image['width'] ?? 0) * (int) ($image['height'] ?? 0);
+            if ($best === null || $area > $bestArea) {
+                $best = $image;
+                $bestArea = $area;
+            }
+        }
+        return $best;
     }
 
     private function addDiscogsLink(int $releaseId, array $detail): void

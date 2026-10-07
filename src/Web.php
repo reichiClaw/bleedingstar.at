@@ -149,12 +149,12 @@ final class Web
 
     private function rental(): void
     {
+        $page = $this->content->page('rental');
         $this->render('rental', [
             'title' => 'Rental',
-            'description' => 'Mietequipment von BleedingStar.',
+            'description' => 'Rental von BleedingStar.',
             'current' => 'rental',
-            'categories' => $this->content->rentalCategories(),
-            'cart' => $_SESSION['rental_cart'] ?? [],
+            'page' => $page,
         ]);
     }
 

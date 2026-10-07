@@ -23,7 +23,7 @@ Die drei erreichbaren Referenzseiten wurden vor dem Entwurf geladen:
 - [reichi.it](https://reichi.it/) ist hell, mit türkisem Akzent. Verwandt in der Zurückhaltung, nicht in der Fläche.
 - [rstream.at](https://rstream.at/) ist dunkel mit violettem Akzent. Die im Brief geschriebene Adresse `htts://rstream.at` ist ein Tippfehler; `https://rstream.at` antwortet.
 
-BleedingStar bleibt in dieser Familie: dunkle Fläche, warme Schrift, kleine Kicker in Mono, viel Luft. Die eigene Farbe ist Crimson `#e23d4f`, nicht das Vermillion von reichi.com. Die Schlagzeilen nutzen Instrument Serif, der Text Instrument Sans, beides lokal ausgeliefert. Das weiße Logo aus dem bisherigen Auftritt liegt auf dem dunklen Kopf. Der Katalog ist ein Cover-Raster, kein Dashboard.
+BleedingStar bleibt in dieser Familie: dunkle Fläche, warme Schrift, viel Luft. Die eigene Farbe ist Crimson `#e23d4f`, nicht das Vermillion von reichi.com. Die Schriften sind die des bisherigen Themes Replay: Oswald für Überschriften, Navigation und Buttons (`themex_heading_font`) und Open Sans für den Fließtext (`themex_content_font`). Beide liegen lokal unter der SIL Open Font License (`public/assets/fonts/OFL.txt`). Das weiße Logo aus dem bisherigen Auftritt liegt auf dem dunklen Kopf. Der Katalog ist ein Cover-Raster, kein Dashboard.
 
 Übernommen wurden nur Inhalte aus `data/content.json`: der WordPress-Export von bleedingstar.at. Spam-Beiträge aus 2020 und 2024, Zugangsdaten und die kompromittierten Plugins sind nicht enthalten. Entwürfe bleiben Entwürfe. Der Platzhalter „Live Recording Info“ ist nicht veröffentlicht. Bei RME Digiface Dante steht im Archiv nur der Titel; die Seite sagt das.
 
@@ -78,7 +78,7 @@ Die bisherige WordPress-Datenbank ist MySQL 5.1 und für diesen Relaunch nicht g
 
 Jede Veröffentlichung hat eine eigene Adresse `/releases/{slug}`. Alte Wurzel-Adressen wie `/supervision` oder `/service` stehen in der Tabelle `redirects`.
 
-Daten stehen in getrennten Tabellen: eigene Redaktion (`artists`, `releases`, `tracks`, `pages`, `rental_*`) und Anbieterbezüge (`external_ids`, `import_reviews`, Cover-Felder mit Quelle und `cover_fetched_at`). Discogs-Cover werden nur angezeigt, wenn `cover_fetched_at` innerhalb von `discogs.max_age_hours` liegt, standardmäßig vier Stunden. Cover aus dem Archiv und eigene Uploads bleiben sichtbar.
+Daten stehen in getrennten Tabellen: eigene Redaktion (`artists`, `releases`, `tracks`, `pages`) und Anbieterbezüge (`external_ids`, `provider_records`, `import_reviews`). Der Discogs-Lauf speichert die komplette API-Antwort und lädt das größte von der API ausgelieferte Cover nach `storage/uploads/covers/discogs/`. Das ist das Feld `uri` (bei diesem Label typischerweise 600 Pixel an der langen Kante). Größere Adressen derselben CDN-Datei antworten mit 403 und werden nicht verwendet. Ist das Bild größer als 640 Pixel, entsteht daraus eine kleinere Datei für das Raster. Die Seiten binden nur diese lokalen Dateien ein. Eigene Archiv-Cover und Uploads bleiben vorrangig. Der vierstündliche Job aktualisiert die gespeicherten Discogs-Daten.
 
 Ein unvollständiges Datum bleibt unvollständig. Ein bekanntes Jahr wird nicht zum 1. Januar. UPC und ISRC sind Zeichenketten. ISRC hängt am Track.
 
@@ -134,7 +134,7 @@ Pflegbar sind Release-Status, Hervorhebung, Künstlerzuordnung, Cover-Upload, St
 
 Das Formular unterscheidet Label, Production, Rental und allgemeine Anfrage. Ein Honeypot, eine kurze Mindestzeit und höchstens fünf gespeicherte Anfragen pro IP und Stunde bremsen Missbrauch. Die Anfrage wird immer in `inquiries` gespeichert. `mail_status` ist `sent` oder `stored`, je nachdem ob `mail()` angenommen hat.
 
-Die Mietliste ist eine Anfrage mit Menge und Zeitraum, keine Buchung und kein Lagerstand. Preise erscheinen nur, wenn sie gepflegt und als öffentlich markiert sind. Im Archiv ist keiner hinterlegt.
+Rental zeigt die Textbeschreibung aus dem Archiv, derzeit ohne Geräteauflistung. Die Anfrage ist unverbindlich. Preise erscheinen nur, wenn sie gepflegt und als öffentlich markiert sind.
 
 Impressum und Datenschutz nennen die bestätigten Angaben: Christian Reichinger, BleedingStar Music Services, Maria Aich 3, 4971 Aurolzmünster, UID ATU 67362668, Telefon und E-Mail. Unternehmensform, Firmenbuch, Kammer, Hosting-Anbieter und die Rechtsgrundlagen im Einzelnen sind als **noch zu ergänzen** markiert.
 
@@ -144,7 +144,7 @@ Impressum und Datenschutz nennen die bestätigten Angaben: Christian Reichinger,
 php tests/run.php
 ```
 
-Der Lauf prüft Filter, Pagination, Datumsgenauigkeit, doppelte External-IDs, Rollback, abgelaufene Discogs-Cover, den Erhalt gesperrter Texte, den Fixture-Import ohne Live-API, die Sperre und den wiederholbaren CSV-Import. Fixture-Zeilen werden danach gelöscht.
+Der Lauf prüft Filter, Pagination, Datumsgenauigkeit, doppelte External-IDs, Rollback, lokale Cover statt Discogs-Hotlinks, die Ableitung der 640-Pixel-Datei, den Erhalt gesperrter Texte, den Fixture-Import, die Sperre und den wiederholbaren CSV-Import. Fixture-Zeilen werden danach gelöscht.
 
 ## Sicherung
 

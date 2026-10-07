@@ -1,7 +1,7 @@
 <?php
 /** @var array $release */
 /** @var App\CatalogRepository $catalog */
-$cover = $catalog->cover($release);
+$cover = $catalog->cover($release, 'grid');
 $date = format_release_date(
     $release['release_year'] !== null ? (int) $release['release_year'] : null,
     $release['release_month'] !== null ? (int) $release['release_month'] : null,

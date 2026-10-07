@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS releases (
   status ENUM('published','hidden','draft','pending') NOT NULL DEFAULT 'published',
   featured TINYINT(1) NOT NULL DEFAULT 0,
   cover_path VARCHAR(500) NULL,
+  cover_grid_path VARCHAR(500) NULL,
   cover_source VARCHAR(40) NULL,
   cover_remote_url VARCHAR(800) NULL,
   cover_attribution VARCHAR(500) NULL,
@@ -266,6 +267,17 @@ CREATE TABLE IF NOT EXISTS import_reviews (
   created_at DATETIME NOT NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_review_open (provider, external_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS provider_records (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  provider VARCHAR(40) NOT NULL,
+  entity_type VARCHAR(40) NOT NULL,
+  external_id VARCHAR(64) NOT NULL,
+  payload_json MEDIUMTEXT NOT NULL,
+  fetched_at DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_provider_record (provider, entity_type, external_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS settings (

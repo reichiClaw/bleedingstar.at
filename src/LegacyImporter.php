@@ -46,7 +46,7 @@ final class LegacyImporter
             }
             $this->importDocuments($data['documents'] ?? [], $artistIds);
             $this->importPages($data);
-            $this->importRental();
+            $this->importRental($data);
             $this->importRedirects($data, $artistIds);
             $this->importSidebars($data['site']['sidebars'] ?? [], $artistIds);
         });
@@ -278,26 +278,29 @@ final class LegacyImporter
         $this->upsertPage('radio', 'Radio', $radio);
     }
 
-    private function importRental(): void
+    private function importRental(array $data): void
     {
-        if ($this->db->one('SELECT id FROM rental_categories LIMIT 1')) {
-            return;
+        $raw = '';
+        foreach ($data['pages'] as $page) {
+            if (($page['slug'] ?? '') === 'rental') {
+                $raw = (string) ($page['content'] ?? '');
+            }
         }
-        $cat = $this->db->insert(
-            'INSERT INTO rental_categories (slug, name, sort_order) VALUES ("recording","Recording",1)'
-        );
-        $items = [
-            ['etherface', 'Etherface', 'High End Recording-Lösung für Midas Pro Consolen.', '<p>High End Recording-Lösung für Midas Pro Consolen.</p><p>Technische Details und Preis sind im Archiv nicht hinterlegt.</p>'],
-            ['zoom-f8', 'Zoom F8', 'Mobile Recording-Lösung.', '<p>Mobile Recording-Lösung.</p><p>Technische Details und Preis sind im Archiv nicht hinterlegt.</p>'],
-            ['rme-digiface-dante', 'RME Digiface Dante', 'Im Archiv nur als Titel geführt.', '<p>Beschreibung noch zu ergänzen. Technische Details und Preis sind nicht hinterlegt.</p>'],
-        ];
-        $i = 1;
-        foreach ($items as [$slug, $name, $summary, $html]) {
-            $this->db->insert(
-                'INSERT INTO rental_items (category_id, slug, name, summary, description_html, status, sort_order) VALUES (?,?,?,?,?,"published",?)',
-                [$cat, $slug, $name, $summary, $html, $i++]
-            );
+        $this->upsertPage('rental', 'Rental', $this->rentalProse($raw));
+    }
+
+    private function rentalProse(string $raw): string
+    {
+        $html = '';
+        if (preg_match_all('/\[block\s+title="[^"]*"\](.*?)\[\/block\]/is', $raw, $matches)) {
+            foreach ($matches[1] as $chunk) {
+                $text = trim(html_entity_decode(strip_tags((string) $chunk)));
+                if ($text !== '') {
+                    $html .= '<p>' . e($text) . '</p>';
+                }
+            }
         }
+        return $html !== '' ? $html : '<p>Beschreibung noch zu ergänzen.</p>';
     }
 
     private function importRedirects(array $data, array $artistIds): void
