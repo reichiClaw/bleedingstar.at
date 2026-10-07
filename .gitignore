@@ -11,3 +11,5 @@
 !/storage/jobs/.gitkeep
 /vendor/
 .DS_Store
+/storage/install.done
+.deploy-ftp-cache.json
