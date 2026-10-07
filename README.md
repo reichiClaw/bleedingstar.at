@@ -1,11 +1,155 @@
-# bleedingstar.at
+# BleedingStar
 
-Content export from the old WordPress database. The site itself is not rebuilt here.
+Öffentliche Website für das Label, Production und Rental von BleedingStar Music Services. Der Katalog kommt aus MySQL. Normale Seitenaufrufe fragen keine Musik-API ab.
 
-`data/content.json` holds the pages, artists, releases, events, news, documents and the media library index. Text is the original post content. Image and file fields point at the existing `wp-content/uploads` URLs.
+PHP rendert die Seiten. Es gibt kein Laravel, Symfony, WordPress, React oder Vue und keinen Node-Prozess, Docker oder Redis.
 
-WordPress was theme Replay, language `de_DE`, front page the Releases page. The database is `bleedingstaratdb5` on `mysqlsvr33.world4you.com`, table prefix `wp_`. The database password stays in `wp-config.php` on the server.
+## Mindestumgebung
 
-123 posts from 2020 and 2024 are injected spam and are not in this export. Accounts, passwords and plugin data are not included. The WordPress install also had randomly named plugins and injected sidebar widgets; none of that is in this export.
+- PHP **8.2** oder neuer. Entwickelt und geprüft mit PHP 8.3.6. Keine Syntax, die nur in 8.3 existiert.
+- Erweiterungen: `pdo_mysql`, `mbstring`, `curl`, `gd`, `json`, `fileinfo`
+- MySQL 8 oder MariaDB 10.6+ mit `utf8mb4`
+- Apache mit `mod_rewrite` oder nginx mit einer Weiterleitung auf `public/index.php`
+- Für das Kontaktformular die PHP-Funktion `mail()`, oder ein Host, der sie an einen SMTP-Dienst reicht
+- Document Root ist `public/`. `config/`, `src/`, `bin/`, `storage/` und `database/` bleiben außerhalb davon
 
-Regenerate the file from the table dumps with `python3 scripts/dump_content.py` (dumps are read from `/tmp/bs/export`).
+Der Produktionsserver braucht keinen Paketmanager. Es gibt keine Composer-Abhängigkeit.
+
+## Gestaltung
+
+Die drei erreichbaren Referenzseiten wurden vor dem Entwurf geladen:
+
+- [reichi.com](https://reichi.com/) ist dunkel (`#0c0c0f`), mit warmer Schrift (`#f3efe7`), vermillion Akzent und einer knappen Mono-Navigation.
+- [reichi.it](https://reichi.it/) ist hell, mit türkisem Akzent. Verwandt in der Zurückhaltung, nicht in der Fläche.
+- [rstream.at](https://rstream.at/) ist dunkel mit violettem Akzent. Die im Brief geschriebene Adresse `htts://rstream.at` ist ein Tippfehler; `https://rstream.at` antwortet.
+
+BleedingStar bleibt in dieser Familie: dunkle Fläche, warme Schrift, kleine Kicker in Mono, viel Luft. Die eigene Farbe ist Crimson `#e23d4f`, nicht das Vermillion von reichi.com. Die Schlagzeilen nutzen Instrument Serif, der Text Instrument Sans, beides lokal ausgeliefert. Das weiße Logo aus dem bisherigen Auftritt liegt auf dem dunklen Kopf. Der Katalog ist ein Cover-Raster, kein Dashboard.
+
+Übernommen wurden nur Inhalte aus `data/content.json`: der WordPress-Export von bleedingstar.at. Spam-Beiträge aus 2020 und 2024, Zugangsdaten und die kompromittierten Plugins sind nicht enthalten. Entwürfe bleiben Entwürfe. Der Platzhalter „Live Recording Info“ ist nicht veröffentlicht. Bei RME Digiface Dante steht im Archiv nur der Titel; die Seite sagt das.
+
+## Installation
+
+1. Code so ablegen, dass der Webserver nur `public/` ausliefert.
+2. Datenbank anlegen, Zeichensatz `utf8mb4`, Collation `utf8mb4_unicode_ci`.
+3. `config/config.example.php` nach `config/config.php` kopieren und Zugangsdaten, `base_url` und Mailadressen eintragen. `config/config.php` wird nicht versioniert.
+4. Schema und Archiv importieren:
+
+```bash
+php bin/install.php --import
+php bin/create-admin.php redaktion@example.com 'ein-langes-passwort'
+```
+
+`--import` liest `data/content.json`, legt Künstler, Releases, News, Events, Weiterleitungen und die drei bestätigten Mietgeräte an und lädt vorhandene Cover von `bleedingstar.at` nach `storage/uploads/`. Ein zweiter Lauf überschreibt keine Felder, die im Admin als redaktionell gesperrt wurden.
+
+5. Schreibrechte für den Webserver-Benutzer:
+
+```text
+storage/logs
+storage/locks
+storage/cache
+storage/uploads
+storage/jobs
+```
+
+6. Apache: Document Root `public/`. Die mitgelieferte `public/.htaccess` leitet auf `index.php` und verbietet jede andere PHP-Datei. nginx zum Beispiel:
+
+```nginx
+root /var/www/bleedingstar/public;
+index index.php;
+location / {
+    try_files $uri $uri/ /index.php?$query_string;
+}
+location ~ \.php$ {
+    include fastcgi_params;
+    fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+    fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+}
+```
+
+Medien unter `/media/…` laufen durch PHP, mit Pfadprüfung und einer Allowlist für Bilder und PDF. In `storage/uploads` abgelegte Dateien werden nicht als PHP ausgeführt.
+
+### Produktion
+
+Die bisherige WordPress-Datenbank ist MySQL 5.1 und für diesen Relaunch nicht geeignet. Eine neue Datenbank muss angelegt werden; die Zugangsdaten kommen dann in `config/config.php`. Die alte WordPress-Installation wird von diesem Code nicht überschrieben.
+
+## Katalog
+
+`/releases` filtert nach Text, Künstler, Jahr, Typ und Sortierung. Die Filter stehen in der URL und funktionieren ohne JavaScript. Mit JavaScript ersetzt ein Abruf nur die Ergebnisliste. Es werden 24 Releases pro Seite geladen.
+
+Jede Veröffentlichung hat eine eigene Adresse `/releases/{slug}`. Alte Wurzel-Adressen wie `/supervision` oder `/service` stehen in der Tabelle `redirects`.
+
+Daten stehen in getrennten Tabellen: eigene Redaktion (`artists`, `releases`, `tracks`, `pages`, `rental_*`) und Anbieterbezüge (`external_ids`, `import_reviews`, Cover-Felder mit Quelle und `cover_fetched_at`). Discogs-Cover werden nur angezeigt, wenn `cover_fetched_at` innerhalb von `discogs.max_age_hours` liegt, standardmäßig vier Stunden. Cover aus dem Archiv und eigene Uploads bleiben sichtbar.
+
+Ein unvollständiges Datum bleibt unvollständig. Ein bekanntes Jahr wird nicht zum 1. Januar. UPC und ISRC sind Zeichenketten. ISRC hängt am Track.
+
+Der Katalog behauptet keine Vollständigkeit. Er ist das bisherige Archiv plus das, was ein späterer Import nach Prüfung übernimmt.
+
+## Discogs und eigene Daten
+
+Der Adapter spricht nur `https://api.discogs.com` an. Die Label-ID ist **316841**. Ein Release wird nur übernommen, wenn ein Label aus `allow_label_ids` oder `allow_label_names` daran hängt. Gleicher Titel allein führt nicht zusammen. Dieselbe normalisierte Kombination aus Künstler und Titel landet in `import_reviews`. Eine UPC kann ein vorhandenes Release verknüpfen. Mehrere Discogs-Ausgaben mit derselben Master-ID werden eine Kachel plus Zeilen in `release_formats`.
+
+Ohne Token liegt der Abstand bei 2,5 Sekunden (unter dem öffentlichen Richtwert von etwa 25 Anfragen pro Minute). Mit Token bei 1,05 Sekunden. `429` mit `Retry-After` wird begrenzt wiederholt. `429` ohne `Retry-After` gilt als erschöpftes Kontingent und beendet den Lauf mit Exit-Code 3. Ein leerer oder fehlgeschlagener Abruf löscht keine vorhandenen Releases.
+
+```bash
+php bin/sync-releases.php --dry-run --max-pages=1
+php bin/sync-releases.php
+php bin/refresh-provider-cache.php
+```
+
+Exit-Codes: `0` in Ordnung, `1` Fehler, `2` anderer Lauf hält die Sperre, `3` Kontingent. Beide Jobs teilen sich `storage/locks/catalog.lock`.
+
+Ein einzelner unauthentifizierter Abruf von `/labels/316841/releases?per_page=1&page=1` am 7. Oktober 2026 antwortete mit `pagination.items = 18`. Ein vollständiger Live-Import wurde nicht ausgeführt. Der sichtbare Katalog ist der Archivimport.
+
+Spotify ist in der Beispielkonfiguration aus. Manuell gesetzte Spotify-Links funktionieren ohne API. Der Player wird erst nach „Player laden“ eingebettet, nicht über dem Cover.
+
+Eigene Releases, die in öffentlichen Datenbanken fehlen:
+
+```bash
+php bin/import-csv.php database/fixtures/own-releases.example.csv
+```
+
+Spalten: `title,artist,year,month,day,type,upc,spotify_url`. Derselbe Lauf legt keine zweite Zeile an, wenn UPC oder die Kombination aus Titel und erstem Künstler schon existiert. Auch das ist kein Vollständigkeitsbeleg.
+
+MusicBrainz ist nicht angebunden.
+
+## Cron
+
+Gewünschte Planungszeitzone: **Europe/Vienna**. Wenn der Cron-Dienst in UTC läuft, `CRON_TZ` setzen. Sonst verschiebt sich 03:15 zwischen Winter- und Sommerzeit.
+
+```cron
+CRON_TZ=Europe/Vienna
+15 3 * * * /usr/bin/php /var/www/bleedingstar/bin/sync-releases.php >> /var/www/bleedingstar/storage/logs/sync.log 2>&1
+20 */4 * * * /usr/bin/php /var/www/bleedingstar/bin/refresh-provider-cache.php >> /var/www/bleedingstar/storage/logs/provider-cache.log 2>&1
+```
+
+Pfade und das PHP-Binary an den Host anpassen. Der Web-Button im Admin schreibt nur `storage/jobs/sync.request`. Der nächste CLI-Lauf von `bin/sync-releases.php` entfernt die Datei und arbeitet den Import ab. Ein Webrequest startet den Import nicht.
+
+## Admin
+
+`/admin` verlangt ein Passwort aus `password_hash`. Acht Fehlversuche pro IP innerhalb von 15 Minuten werden abgewiesen. Formulare nutzen CSRF-Tokens. Sessions heißen `bsid`, sind HttpOnly und SameSite=Lax, bei HTTPS zusätzlich Secure.
+
+Pflegbar sind Release-Status, Hervorhebung, Künstlerzuordnung, Cover-Upload, Streaming-Links, Künstlertexte, die Seiten Label, Production und Radio sowie die Mietartikel. Speichern setzt `editorial_locked`, damit der nächste Import diese Felder nicht leert. Unsichere Discogs-Treffer liegen unter Prüfung.
+
+## Kontakt, Rental, Rechtliches
+
+Das Formular unterscheidet Label, Production, Rental und allgemeine Anfrage. Ein Honeypot, eine kurze Mindestzeit und höchstens fünf gespeicherte Anfragen pro IP und Stunde bremsen Missbrauch. Die Anfrage wird immer in `inquiries` gespeichert. `mail_status` ist `sent` oder `stored`, je nachdem ob `mail()` angenommen hat.
+
+Die Mietliste ist eine Anfrage mit Menge und Zeitraum, keine Buchung und kein Lagerstand. Preise erscheinen nur, wenn sie gepflegt und als öffentlich markiert sind. Im Archiv ist keiner hinterlegt.
+
+Impressum und Datenschutz nennen die bestätigten Angaben: Christian Reichinger, BleedingStar Music Services, Maria Aich 3, 4971 Aurolzmünster, UID ATU 67362668, Telefon und E-Mail. Unternehmensform, Firmenbuch, Kammer, Hosting-Anbieter und die Rechtsgrundlagen im Einzelnen sind als **noch zu ergänzen** markiert.
+
+## Tests
+
+```bash
+php tests/run.php
+```
+
+Der Lauf prüft Filter, Pagination, Datumsgenauigkeit, doppelte External-IDs, Rollback, abgelaufene Discogs-Cover, den Erhalt gesperrter Texte, den Fixture-Import ohne Live-API, die Sperre und den wiederholbaren CSV-Import. Fixture-Zeilen werden danach gelöscht.
+
+## Sicherung
+
+Sichern: die MySQL-Datenbank und `storage/uploads`. `config/config.php` separat, nicht im Repository. Wiederherstellen: Code ausspielen, `config.php` zurücklegen, Datenbank einspielen, Upload-Verzeichnis an denselben Ort, Schreibrechte setzen. Ein Import ist wiederholbar und ersetzt keine gesperrten redaktionellen Felder.
+
+## Inhalt des Exports
+
+`data/content.json` bleibt die Quelle des Erstimports. `scripts/dump_content.py` kann sie aus Tabellen-Dumps unter `/tmp/bs/export` neu bauen. 123 Spam-Beiträge sind ausgeschlossen.

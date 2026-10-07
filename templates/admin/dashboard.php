@@ -1,0 +1,16 @@
+<section class="wrap section">
+  <h1>Status</h1>
+  <ul class="stat">
+    <li><?= (int) $counts['releases'] ?> veröffentlichte Releases</li>
+    <li><?= (int) $counts['artists'] ?> Künstler</li>
+    <li><?= (int) $counts['reviews'] ?> offene Prüffälle</li>
+  </ul>
+  <p><a href="/admin/pages/label">Labeltext</a> · <a href="/admin/pages/production">Production</a> · <a href="/admin/pages/radio">Radio</a></p>
+  <h2>Letzte Jobs</h2>
+  <?php if (!$runs): ?><p>Noch kein Sync.</p><?php endif; ?>
+  <ul class="lined">
+    <?php foreach ($runs as $run): ?>
+      <li><span><?= e($run['job']) ?> · <?= e($run['status']) ?><?= (int) $run['dry_run'] ? ' · dry-run' : '' ?></span><span><?= e((string) $run['started_at']) ?></span></li>
+    <?php endforeach; ?>
+  </ul>
+</section>
