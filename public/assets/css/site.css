@@ -666,6 +666,69 @@ main:focus { outline: none; }
   .services__item:last-child { grid-column: 1 / -1; }
 }
 
+/* Verbundene Projekte: gleiche Zeile wie auf reichi.com, reichi.it und rstream.at */
+.projects { border-top: 1px solid var(--line); }
+.projects__list {
+  list-style: none;
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+/* Die Zelle ist ein Grid, damit der Link sie ganz ausfüllt und in einer Reihe mit höheren
+   Nachbarn kein unklickbarer Streifen bleibt. */
+.projects__item { display: grid; background: var(--panel); }
+.projects__link {
+  display: grid;
+  grid-template-columns: minmax(7rem, 11rem) 1fr;
+  gap: 1.5rem 2rem;
+  align-items: center;
+  padding: clamp(1.5rem, 3vw, 2.5rem) clamp(1.25rem, 3vw, 2.5rem);
+  text-decoration: none;
+  transition: background-color var(--dur) var(--ease);
+}
+.projects__link:hover { background: var(--bg-3); }
+.projects__logo img { display: block; width: 100%; max-width: 11rem; height: auto; }
+/* Wortmarke aus Text (reichi.com): Sechseck + Name wie dessen Kopfzeile, „.com“ in dessen Rot */
+.projects__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-sans);
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--ink);
+}
+.projects__brand-mark { width: 2.25rem; height: 2.25rem; flex: none; }
+.projects__brand-suffix { color: #ff7362; }
+.projects__body { display: grid; gap: 0.25rem; }
+.projects__name { font-family: var(--font-display); font-size: var(--step-2); font-weight: 500; text-transform: uppercase; letter-spacing: 0.01em; line-height: 1.1; color: var(--ink); }
+.projects__text { color: var(--ink-2); line-height: 1.5; text-wrap: pretty; }
+.projects__url {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: var(--step--1);
+  letter-spacing: 0.04em;
+  color: var(--accent-ink);
+}
+.projects__icon { width: 1em; height: 1em; flex: none; }
+@media (min-width: 48em) {
+  .projects__list { grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 64em) {
+  .projects__list:has(> li:nth-child(3)) { grid-template-columns: repeat(3, 1fr); }
+  .projects__list:has(> li:nth-child(3)) .projects__link { grid-template-columns: 1fr; align-content: start; }
+}
+@media (max-width: 30em) {
+  .projects__link { grid-template-columns: 1fr; }
+  .projects__logo img { max-width: 9rem; }
+}
+
 .hire { background: linear-gradient(to bottom, var(--bg), var(--bg-2)); }
 .hire__inner { display: grid; gap: 2rem 4rem; align-items: center; }
 .hire__inner .section__title { font-size: var(--step-3); }
@@ -1014,8 +1077,8 @@ main:focus { outline: none; }
     transition: opacity 700ms var(--ease), transform 700ms var(--ease);
   }
   .js [data-reveal].is-visible { opacity: 1; transform: none; }
-  .js .grid > .card:nth-child(4n + 2), .js .services__item:nth-child(2) { transition-delay: 90ms; }
-  .js .grid > .card:nth-child(4n + 3), .js .services__item:nth-child(3) { transition-delay: 180ms; }
+  .js .grid > .card:nth-child(4n + 2), .js .services__item:nth-child(2), .js .projects__item:nth-child(2) { transition-delay: 90ms; }
+  .js .grid > .card:nth-child(4n + 3), .js .services__item:nth-child(3), .js .projects__item:nth-child(3) { transition-delay: 180ms; }
   .js .grid > .card:nth-child(4n + 4) { transition-delay: 270ms; }
 
   @keyframes rise {

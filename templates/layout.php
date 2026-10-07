@@ -20,6 +20,7 @@ $nav = [
     'label' => ['Label', '/label'],
     'production' => ['Production', '/production'],
     'rental' => ['Rental', '/rental'],
+    'projekte' => ['Projekte', '/#projekte'],
 ];
 ?><!DOCTYPE html>
 <html lang="de">

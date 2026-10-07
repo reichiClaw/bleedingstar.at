@@ -36,7 +36,7 @@
   }
 
   if ("IntersectionObserver" in window && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    var targets = document.querySelectorAll(".section__head, .grid > .card, .services__item, .roster__list, .hire__inner");
+    var targets = document.querySelectorAll(".section__head, .grid > .card, .services__item, .projects__item, .roster__list, .hire__inner");
     var observer = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         if (entry.isIntersecting) {
