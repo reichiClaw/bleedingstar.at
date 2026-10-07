@@ -71,3 +71,24 @@ function request_path(): string
     }
     return $path === '' ? '/' : $path;
 }
+
+/** Source settings with defaults, so an older config/config.php keeps working. */
+function source_config(array $config, string $name): array
+{
+    $discogs = $config['discogs'] ?? [];
+    $defaults = [
+        'deezer' => [
+            'enabled' => true,
+            'label_names' => $discogs['allow_label_names'] ?? ['BleedingStar Records'],
+            'user_agent' => $discogs['user_agent'] ?? 'BleedingStarCatalog/1.0',
+            'timeout' => 20,
+        ],
+        'apple' => [
+            'enabled' => true,
+            'country' => 'at',
+            'user_agent' => $discogs['user_agent'] ?? 'BleedingStarCatalog/1.0',
+            'timeout' => 20,
+        ],
+    ];
+    return array_replace($defaults[$name] ?? [], (array) ($config[$name] ?? []));
+}

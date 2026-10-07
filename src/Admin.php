@@ -310,10 +310,17 @@ final class Admin
     private function reviews(): void
     {
         $rows = $this->db->all(
-            "SELECT rv.*, r.title AS candidate_title FROM import_reviews rv
+            "SELECT rv.*, r.title AS candidate_title, r.slug AS candidate_slug FROM import_reviews rv
              LEFT JOIN releases r ON r.id = rv.candidate_release_id
              WHERE rv.status = 'open' ORDER BY rv.id DESC"
         );
+        foreach ($rows as &$row) {
+            $payload = json_decode((string) $row['payload_json'], true) ?: [];
+            $artist = $payload['artist']['name'] ?? ($payload['artists'][0]['name'] ?? '');
+            $row['incoming'] = trim(($artist !== '' ? $artist . ' – ' : '') . ($payload['title'] ?? ''));
+            $row['incoming_url'] = $payload['link'] ?? ($payload['uri'] ?? '');
+        }
+        unset($row);
         $this->render('admin/reviews', ['rows' => $rows, 'title' => 'Prüffälle']);
     }
 
@@ -324,8 +331,14 @@ final class Admin
             $this->db->exec("UPDATE import_reviews SET status='dismissed' WHERE id=? AND status='open'", [$id]);
         }
         if ($action === 'merge') {
-            $sync = new Sync(app_db(), new \App\Discogs\Client($this->config['discogs']), $this->config['discogs']);
-            $sync->mergeReview($id);
+            $review = $this->db->one("SELECT provider FROM import_reviews WHERE id = ? AND status = 'open'", [$id]);
+            if (($review['provider'] ?? '') === 'deezer') {
+                $deezer = source_config($this->config, 'deezer');
+                (new \App\Deezer\Sync(app_db(), new \App\Deezer\Client($deezer), $deezer))->mergeReview($id);
+            } elseif ($review) {
+                $sync = new Sync(app_db(), new \App\Discogs\Client($this->config['discogs']), $this->config['discogs']);
+                $sync->mergeReview($id);
+            }
         }
         header('Location: /admin/reviews', true, 303);
     }

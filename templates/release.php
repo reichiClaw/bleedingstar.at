@@ -64,8 +64,8 @@ if ($release['release_date_precision'] === 'day' && $release['release_year'] && 
         </p>
         <div id="player-slot" class="player-slot" hidden></div>
       <?php endif; ?>
-      <?php if ($cover && $cover['source'] === 'discogs'): ?>
-        <p class="attr"><?php if ($cover['page']): ?><a href="<?= e($cover['page']) ?>" rel="noopener noreferrer">Cover und Daten: Discogs</a><?php else: ?>Cover: Discogs<?php endif; ?></p>
+      <?php if ($cover && $cover['external']): ?>
+        <p class="attr"><?php if ($cover['page']): ?><a href="<?= e($cover['page']) ?>" rel="noopener noreferrer"><?= e($cover['attribution']) ?></a><?php else: ?><?= e($cover['attribution']) ?><?php endif; ?></p>
       <?php endif; ?>
     </div>
   </div>

@@ -200,11 +200,13 @@ final class CatalogRepository
             return null;
         }
         $source = (string) ($release['cover_source'] ?? '');
+        $external = !in_array($source, ['', 'legacy', 'upload'], true);
         return [
             'url' => '/media/' . ltrim($path, '/'),
             'source' => $source,
-            'attribution' => $source === 'discogs' ? ($release['cover_attribution'] ?: 'Discogs') : null,
-            'page' => $source === 'discogs' ? ($release['cover_page_url'] ?: null) : null,
+            'external' => $external,
+            'attribution' => $external ? ($release['cover_attribution'] ?: 'Cover: ' . ucfirst($source)) : null,
+            'page' => $external ? ($release['cover_page_url'] ?: null) : null,
         ];
     }
 
@@ -221,9 +223,10 @@ final class CatalogRepository
     private function discogsFacts(int $releaseId): array
     {
         $rows = $this->db->all(
-            "SELECT p.payload_json FROM provider_records p
+            "SELECT p.provider, p.payload_json FROM provider_records p
              JOIN external_ids e ON e.provider = p.provider AND e.entity_type = p.entity_type AND e.external_id = p.external_id
-             WHERE e.provider = 'discogs' AND e.entity_type = 'release' AND e.entity_id = ?",
+             WHERE e.provider IN ('discogs', 'deezer') AND e.entity_type = 'release' AND e.entity_id = ?
+             ORDER BY FIELD(p.provider, 'discogs', 'deezer')",
             [$releaseId]
         );
         $genres = [];
@@ -233,6 +236,15 @@ final class CatalogRepository
         foreach ($rows as $row) {
             $detail = json_decode((string) $row['payload_json'], true);
             if (!is_array($detail)) {
+                continue;
+            }
+            if ($row['provider'] === 'deezer') {
+                foreach ($detail['genres']['data'] ?? [] as $genre) {
+                    $name = trim((string) ($genre['name'] ?? ''));
+                    if ($name !== '') {
+                        $genres[$name] = $name;
+                    }
+                }
                 continue;
             }
             foreach ($detail['genres'] ?? [] as $genre) {
