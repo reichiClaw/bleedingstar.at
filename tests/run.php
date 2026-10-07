@@ -275,5 +275,28 @@ $left = (int) $db->one('SELECT COUNT(*) AS c FROM releases WHERE title LIKE ?', 
 check($left === 0, 'fixture releases removed');
 check((int) $db->one("SELECT COUNT(*) AS c FROM releases WHERE status='published'")['c'] === $publishedReleases, 'public catalog count restored');
 
+// --- HTML filter -----------------------------------------------------------
+$dirty = '<p class="x" onclick="alert(1)">Hi <strong/onmouseover=alert(1)>there</strong></p>'
+    . '<a href="javascript:alert(1)">bad</a><a href="//evil.example/x">proto</a><a href="/releases">ok</a>'
+    . '<img src="data:image/png;base64,AAAA"><img src="/media/covers/a.jpg" alt="A" onerror="x">'
+    . '<script>alert(1)</script><iframe src="https://x"></iframe>';
+$cleaned = App\Html::clean($dirty);
+check(!str_contains($cleaned, 'onclick') && !str_contains($cleaned, 'onmouseover') && !str_contains($cleaned, 'onerror'), 'event handler attributes are removed');
+check(!str_contains($cleaned, 'class='), 'other attributes on allowed tags are removed');
+check(!str_contains($cleaned, 'javascript') && !str_contains($cleaned, 'evil.example') && !str_contains($cleaned, 'data:'), 'unsafe URLs are dropped');
+check(str_contains($cleaned, '<a href="/releases"') && str_contains($cleaned, '<img src="/media/covers/a.jpg" alt="A"'), 'safe links and images survive');
+check(!str_contains($cleaned, '<script') && !str_contains($cleaned, '<iframe'), 'script and iframe are removed');
+
+// --- Installer gate --------------------------------------------------------
+$installer = new App\Installer($db, app_root());
+$token = str_repeat('a', 40);
+check(!$installer->webAllowed(['setup_token' => ''], 'x'), 'setup is closed without a token');
+check(!$installer->webAllowed(['setup_token' => 'short'], 'short'), 'setup rejects a short token');
+check($installer->installed() || $installer->webAllowed(['setup_token' => $token], $token), 'setup opens with the configured token while not installed');
+check(!$installer->webAllowed(['setup_token' => $token], substr($token, 1) . 'b'), 'setup rejects a wrong token');
+if ($installer->installed()) {
+    check(!$installer->webAllowed(['setup_token' => $token], $token), 'setup is closed once installed');
+}
+
 echo $failed === 0 ? "ALL PASSED\n" : "$failed FAILED\n";
 exit($failed === 0 ? 0 : 1);

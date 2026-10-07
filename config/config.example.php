@@ -9,6 +9,9 @@ declare(strict_types=1);
 return [
     'base_url' => 'https://www.bleedingstar.at',
     'timezone' => 'Europe/Vienna',
+    // Optional: at least 32 random characters open /setup?token=... once, until storage/install.done exists.
+    // Only needed on hosting without shell access; leave empty otherwise.
+    'setup_token' => '',
     'db' => [
         'dsn' => 'mysql:host=127.0.0.1;dbname=bleedingstar;charset=utf8mb4',
         'user' => 'bleedingstar',
