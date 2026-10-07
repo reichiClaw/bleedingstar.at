@@ -19,7 +19,7 @@
       <input type="hidden" name="token" value="<?= e((string) $token) ?>">
       <label>Admin E-Mail <input name="email" type="email" required autocomplete="username"></label>
       <label>Admin Passwort (mindestens 12 Zeichen) <input name="password" type="password" required minlength="12" autocomplete="new-password"></label>
-      <label><input type="checkbox" name="import" checked> Inhalte der alten Website einspielen (Künstler, Releases, News, Texte)</label>
+      <label><input type="checkbox" name="import" checked> Inhalte der alten Website einspielen (Künstler, Releases, Texte)</label>
       <button class="btn btn-accent" type="submit">Einrichten</button>
     </form>
   <?php endif; ?>

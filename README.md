@@ -39,7 +39,13 @@ php bin/install.php --import
 php bin/create-admin.php redaktion@example.com 'ein-langes-passwort'
 ```
 
-`--import` liest `data/content.json`, legt Künstler, Releases, News, Events, Weiterleitungen und die drei bestätigten Mietgeräte an und lädt vorhandene Cover von `bleedingstar.at` nach `storage/uploads/`. Ein zweiter Lauf überschreibt keine Felder, die im Admin als redaktionell gesperrt wurden.
+`--import` liest `data/content.json`, legt Künstler, Releases, Weiterleitungen und die drei bestätigten Mietgeräte an und lädt vorhandene Cover von `bleedingstar.at` nach `storage/uploads/`. Ein zweiter Lauf überschreibt keine Felder, die im Admin als redaktionell gesperrt wurden. News, Events, Radio und Downloads der alten Seite werden nicht übernommen; sie bleiben nur im Export erhalten. Datenbanken, die vor dieser Änderung eingerichtet wurden, haben die Tabellen `news`, `events` und `documents` sowie die Seite `radio` noch; sie werden von nichts mehr gelesen und können entfernt werden:
+
+```sql
+DROP TABLE IF EXISTS news, events, documents;
+DELETE FROM pages WHERE slug = 'radio';
+DELETE FROM redirects WHERE target_path LIKE '/news/%';
+```
 
 5. Schreibrechte für den Webserver-Benutzer:
 
@@ -194,7 +200,7 @@ Zeitbudget: Jede Quelle hört von sich aus auf, neue Einträge anzufassen, sobal
 
 `/admin` verlangt ein Passwort aus `password_hash`. Acht Fehlversuche pro IP innerhalb von 15 Minuten werden abgewiesen. Formulare nutzen CSRF-Tokens. Sessions heißen `bsid`, sind HttpOnly und SameSite=Lax, bei HTTPS zusätzlich Secure.
 
-Pflegbar sind Release-Status, Hervorhebung, Künstlerzuordnung, Cover-Upload, Streaming-Links, Künstlertexte, die Seiten Label, Production und Radio sowie die Mietartikel. Speichern setzt `editorial_locked`, damit der nächste Import diese Felder nicht leert. Unsichere Discogs-Treffer liegen unter Prüfung.
+Pflegbar sind Release-Status, Hervorhebung, Künstlerzuordnung, Cover-Upload, Streaming-Links, Künstlertexte, die Seiten Label und Production sowie die Mietartikel. Speichern setzt `editorial_locked`, damit der nächste Import diese Felder nicht leert. Unsichere Discogs-Treffer liegen unter Prüfung.
 
 ## Kontakt, Rental, Rechtliches
 

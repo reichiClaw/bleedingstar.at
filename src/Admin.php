@@ -248,7 +248,7 @@ final class Admin
 
     private function pageForm(string $slug): void
     {
-        if (!in_array($slug, ['label', 'production', 'radio'], true)) {
+        if (!in_array($slug, ['label', 'production'], true)) {
             $this->missing();
             return;
         }
@@ -258,7 +258,7 @@ final class Admin
 
     private function pageSave(string $slug): void
     {
-        if (!in_array($slug, ['label', 'production', 'radio'], true)) {
+        if (!in_array($slug, ['label', 'production'], true)) {
             $this->missing();
             return;
         }

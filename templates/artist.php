@@ -22,14 +22,6 @@
   <?php if (trim(strip_tags((string) $artist['bio_html'])) !== ''): ?>
     <div class="prose"><?= $artist['bio_html'] ?></div>
   <?php endif; ?>
-  <?php if ($artist['documents']): ?>
-    <h2>Downloads</h2>
-    <ul class="lined">
-      <?php foreach ($artist['documents'] as $doc): ?>
-        <li><a href="<?= e($doc['file_url']) ?>"><?= e($doc['title']) ?></a></li>
-      <?php endforeach; ?>
-    </ul>
-  <?php endif; ?>
   <?php if ($artist['releases']): ?>
     <h2>Releases bei BleedingStar</h2>
     <div class="grid">

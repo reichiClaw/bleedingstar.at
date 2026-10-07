@@ -13,7 +13,7 @@
     <p class="note">Preis auf Anfrage. Es wird nichts reserviert.</p>
   <?php endif; ?>
   <?php if ($item['files']): ?>
-    <h2>Downloads</h2>
+    <h2>Unterlagen</h2>
     <ul class="lined">
       <?php foreach ($item['files'] as $file): ?>
         <li><a href="/media/<?= e($file['path']) ?>"><?= e($file['title']) ?></a></li>

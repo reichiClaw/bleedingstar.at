@@ -167,43 +167,6 @@ CREATE TABLE IF NOT EXISTS rental_files (
   CONSTRAINT fk_rfile_item FOREIGN KEY (item_id) REFERENCES rental_items (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS documents (
-  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  title VARCHAR(190) NOT NULL,
-  file_url VARCHAR(800) NOT NULL,
-  artist_id INT UNSIGNED NULL,
-  PRIMARY KEY (id),
-  KEY idx_docs_artist (artist_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS news (
-  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  legacy_id VARCHAR(32) NULL,
-  slug VARCHAR(190) NOT NULL,
-  title VARCHAR(255) NOT NULL,
-  body_html MEDIUMTEXT NOT NULL,
-  published_on DATE NULL,
-  status ENUM('published','draft') NOT NULL DEFAULT 'published',
-  PRIMARY KEY (id),
-  UNIQUE KEY uq_news_slug (slug),
-  UNIQUE KEY uq_news_legacy (legacy_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS events (
-  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  legacy_id VARCHAR(32) NULL,
-  slug VARCHAR(190) NOT NULL,
-  title VARCHAR(255) NOT NULL,
-  event_date VARCHAR(32) NULL,
-  place VARCHAR(190) NULL,
-  event_status VARCHAR(40) NULL,
-  artist_id INT UNSIGNED NULL,
-  status ENUM('published','draft') NOT NULL DEFAULT 'published',
-  PRIMARY KEY (id),
-  UNIQUE KEY uq_events_slug (slug),
-  UNIQUE KEY uq_events_legacy (legacy_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS redirects (
   source_path VARCHAR(190) NOT NULL,
   target_path VARCHAR(190) NOT NULL,

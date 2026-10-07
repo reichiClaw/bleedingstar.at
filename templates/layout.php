@@ -70,10 +70,6 @@ $admin = $admin ?? false;
   <div class="wrap foot">
     <p>© BleedingStar Music Services</p>
     <nav aria-label="Fußzeile">
-      <a href="/news">News</a>
-      <a href="/events">Events</a>
-      <a href="/radio">Radio</a>
-      <a href="/downloads">Downloads</a>
       <a href="/impressum">Impressum</a>
       <a href="/datenschutz">Datenschutz</a>
     </nav>

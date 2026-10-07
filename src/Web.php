@@ -55,11 +55,6 @@ final class Web
             $method === 'POST' && $path === '/kontakt' => $this->contactSubmit(),
             $method === 'GET' && $path === '/impressum' => $this->impressum(),
             $method === 'GET' && $path === '/datenschutz' => $this->privacy(),
-            $method === 'GET' && $path === '/news' => $this->news(),
-            $method === 'GET' && $head === 'news' && isset($parts[1]) => $this->newsItem($parts[1]),
-            $method === 'GET' && $path === '/events' => $this->events(),
-            $method === 'GET' && $path === '/radio' => $this->page('radio', 'Radio', ''),
-            $method === 'GET' && $path === '/downloads' => $this->downloads(),
             $method === 'GET' && $path === '/sitemap.xml' => $this->sitemap(),
             $method === 'GET' && $path === '/robots.txt' => $this->robots(),
             $method === 'GET' && $head === 'media' => $this->media(implode('/', array_slice($parts, 1))),
@@ -316,55 +311,10 @@ final class Web
         ]);
     }
 
-    private function news(): void
-    {
-        $this->render('news', [
-            'title' => 'News',
-            'description' => 'Nachrichtenarchiv von BleedingStar.',
-            'current' => '',
-            'items' => $this->content->newsList(),
-        ]);
-    }
-
-    private function newsItem(string $slug): void
-    {
-        $item = $this->content->news($slug);
-        if (!$item) {
-            $this->notFound();
-            return;
-        }
-        $this->render('news-item', [
-            'title' => $item['title'],
-            'description' => $item['title'],
-            'current' => '',
-            'item' => $item,
-        ]);
-    }
-
-    private function events(): void
-    {
-        $this->render('events', [
-            'title' => 'Events',
-            'description' => 'Vergangene Termine aus dem BleedingStar-Archiv.',
-            'current' => '',
-            'events' => $this->content->events(),
-        ]);
-    }
-
-    private function downloads(): void
-    {
-        $this->render('downloads', [
-            'title' => 'Downloads',
-            'description' => 'Pressetexte und Rider aus dem Archiv.',
-            'current' => '',
-            'documents' => $this->content->documents(),
-        ]);
-    }
-
     private function sitemap(): void
     {
         $base = rtrim($this->config['base_url'], '/');
-        $urls = ['/', '/label', '/releases', '/artists', '/production', '/rental', '/kontakt', '/impressum', '/datenschutz', '/news', '/events', '/downloads'];
+        $urls = ['/', '/label', '/releases', '/artists', '/production', '/rental', '/kontakt', '/impressum', '/datenschutz'];
         foreach (app_db()->all("SELECT slug FROM releases WHERE status = 'published'") as $row) {
             $urls[] = '/releases/' . $row['slug'];
         }
@@ -373,9 +323,6 @@ final class Web
         }
         foreach (app_db()->all("SELECT slug FROM rental_items WHERE status = 'published'") as $row) {
             $urls[] = '/rental/' . $row['slug'];
-        }
-        foreach (app_db()->all("SELECT slug FROM news WHERE status = 'published'") as $row) {
-            $urls[] = '/news/' . $row['slug'];
         }
         header('Content-Type: application/xml; charset=utf-8');
         echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";

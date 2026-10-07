@@ -17,7 +17,7 @@ final class LegacyImporter
     public function import(string $jsonPath): array
     {
         $data = json_decode((string) file_get_contents($jsonPath), true, 512, JSON_THROW_ON_ERROR);
-        $stats = ['artists' => 0, 'releases' => 0, 'news' => 0, 'events' => 0, 'images' => 0];
+        $stats = ['artists' => 0, 'releases' => 0, 'images' => 0];
 
         $this->db->transaction(function () use ($data, &$stats) {
             $artistIds = [];
@@ -30,21 +30,7 @@ final class LegacyImporter
                 $this->upsertRelease($release, $artistIds, $stats);
                 $stats['releases']++;
             }
-            foreach ($data['news'] as $item) {
-                if (($item['status'] ?? '') !== 'publish') {
-                    continue;
-                }
-                $this->upsertNews($item);
-                $stats['news']++;
-            }
-            foreach ($data['events'] as $item) {
-                if (($item['status'] ?? '') !== 'publish') {
-                    continue;
-                }
-                $this->upsertEvent($item, $artistIds);
-                $stats['events']++;
-            }
-            $this->importDocuments($data['documents'] ?? [], $artistIds);
+            // News, events and press downloads of the old site are archived in the export only.
             $this->importPages($data);
             $this->importRental($data);
             $this->importRedirects($data, $artistIds);
@@ -196,73 +182,6 @@ final class LegacyImporter
         }
     }
 
-    private function upsertNews(array $item): void
-    {
-        $slug = $this->uniqueSlug('news', (string) $item['slug'], (string) $item['id']);
-        $body = Html::wordpress($item['content'] ?? '');
-        $date = substr((string) ($item['date'] ?? ''), 0, 10);
-        $existing = $this->db->one('SELECT id FROM news WHERE legacy_id = ?', [(string) $item['id']]);
-        if ($existing) {
-            $this->db->exec(
-                'UPDATE news SET slug=?, title=?, body_html=?, published_on=?, status="published" WHERE id=?',
-                [$slug, $item['title'], $body, $date !== '' ? $date : null, $existing['id']]
-            );
-            return;
-        }
-        $this->db->insert(
-            'INSERT INTO news (legacy_id, slug, title, body_html, published_on, status) VALUES (?,?,?,?,?,"published")',
-            [(string) $item['id'], $slug, $item['title'], $body, $date !== '' ? $date : null]
-        );
-    }
-
-    private function upsertEvent(array $item, array $artistIds): void
-    {
-        $meta = $item['meta'] ?? [];
-        $slug = $this->uniqueSlug('events', (string) $item['slug'], (string) $item['id']);
-        $legacyArtist = $this->parseList($meta['event_artists'] ?? '')[0] ?? null;
-        $artistId = $legacyArtist ? ($artistIds[(string) $legacyArtist] ?? null) : null;
-        $existing = $this->db->one('SELECT id FROM events WHERE legacy_id = ?', [(string) $item['id']]);
-        $params = [
-            $slug, $item['title'], $meta['event_date'] ?? null, $meta['event_place'] ?? null,
-            $meta['event_status'] ?? null, $artistId,
-        ];
-        if ($existing) {
-            $this->db->exec(
-                'UPDATE events SET slug=?, title=?, event_date=?, place=?, event_status=?, artist_id=?, status="published" WHERE id=?',
-                array_merge($params, [$existing['id']])
-            );
-            return;
-        }
-        $this->db->insert(
-            'INSERT INTO events (legacy_id, slug, title, event_date, place, event_status, artist_id, status) VALUES (?,?,?,?,?,?,?,"published")',
-            array_merge([(string) $item['id']], $params)
-        );
-    }
-
-    private function importDocuments(array $documents, array $artistIds): void
-    {
-        $artists = $this->db->all('SELECT id, name FROM artists');
-        usort($artists, static fn ($a, $b) => mb_strlen($b['name']) <=> mb_strlen($a['name']));
-        $this->db->exec('DELETE FROM documents');
-        foreach ($documents as $doc) {
-            $url = $doc['file']['url'] ?? null;
-            if (!$url) {
-                continue;
-            }
-            $artistId = null;
-            foreach ($artists as $artist) {
-                if (mb_strlen($artist['name']) >= 4 && mb_stripos($doc['title'], $artist['name']) !== false) {
-                    $artistId = (int) $artist['id'];
-                    break;
-                }
-            }
-            $this->db->exec(
-                'INSERT INTO documents (title, file_url, artist_id) VALUES (?,?,?)',
-                [$doc['title'], $url, $artistId]
-            );
-        }
-    }
-
     private function importPages(array $data): void
     {
         $service = null;
@@ -274,11 +193,9 @@ final class LegacyImporter
         $label = '<p>BleedingStar ist das Label von Christian Reichinger. Im bisherigen Auftritt firmiert es als BleedingStar Music Services, Maria Aich 3, 4971 Aurolzmünster.</p>'
             . '<p>Neben dem Label- und Publishing-Service arbeitet er als Live-Tontechniker und Tourmanager.</p>'
             . '<p>Künstler sind im Archiv mit den Zuordnungen Vertrieb, Booking und Managing geführt. Ein längerer Labeltext ist dort nicht hinterlegt.</p>';
-        $radio = '<p>Der bisherige Auftritt hat den Mixlr-Stream von Selecta Jahrusso eingebunden.</p>'
-            . '<p><a href="https://mixlr.com/jahrusso">Mixlr: Selecta Jahrusso</a></p>';
         $this->upsertPage('label', 'Label', $label);
         $this->upsertPage('production', 'Production', $service ?: '<p>Beschreibung noch zu ergänzen.</p>');
-        $this->upsertPage('radio', 'Radio', $radio);
+        $this->db->exec("DELETE FROM pages WHERE slug = 'radio'");
     }
 
     private function importRental(array $data): void
@@ -332,14 +249,8 @@ final class LegacyImporter
                 }
             }
         }
-        foreach ($data['news'] as $item) {
-            if (($item['status'] ?? '') === 'publish') {
-                $row = $this->db->one('SELECT slug FROM news WHERE legacy_id = ?', [(string) $item['id']]);
-                if ($row) {
-                    $map['/' . $item['slug']] = '/news/' . $row['slug'];
-                }
-            }
-        }
+        // Old news addresses pointed to /news/…, which no longer exists.
+        $this->db->exec("DELETE FROM redirects WHERE target_path LIKE '/news/%' OR target_path IN ('/news', '/events', '/radio', '/downloads')");
         foreach ($map as $from => $to) {
             if ($from === $to || isset($map[$to])) {
                 continue;
@@ -525,7 +436,7 @@ final class LegacyImporter
 
     private function uniqueSlug(string $table, string $slug, string $legacyId): string
     {
-        if (!in_array($table, ['artists', 'releases', 'news', 'events'], true)) {
+        if (!in_array($table, ['artists', 'releases'], true)) {
             throw new \InvalidArgumentException('Unknown slug table.');
         }
         $slug = slugify($slug);

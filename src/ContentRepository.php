@@ -15,27 +15,6 @@ final class ContentRepository
         return $this->db->one('SELECT * FROM pages WHERE slug = ?', [$slug]);
     }
 
-    public function newsList(): array
-    {
-        return $this->db->all("SELECT slug, title, published_on, body_html FROM news WHERE status = 'published' ORDER BY published_on DESC, id DESC");
-    }
-
-    public function news(string $slug): ?array
-    {
-        return $this->db->one("SELECT * FROM news WHERE slug = ? AND status = 'published'", [$slug]);
-    }
-
-    public function events(): array
-    {
-        return $this->db->all(
-            "SELECT e.*, a.name AS artist_name, a.slug AS artist_slug
-             FROM events e
-             LEFT JOIN artists a ON a.id = e.artist_id
-             WHERE e.status = 'published'
-             ORDER BY e.event_date DESC, e.id DESC"
-        );
-    }
-
     public function rentalCategories(): array
     {
         $cats = $this->db->all('SELECT * FROM rental_categories ORDER BY sort_order, name');
@@ -69,16 +48,6 @@ final class ContentRepository
     public function rentalItemById(int $id): ?array
     {
         return $this->db->one("SELECT * FROM rental_items WHERE id = ? AND status = 'published'", [$id]);
-    }
-
-    public function documents(): array
-    {
-        return $this->db->all(
-            'SELECT d.title, d.file_url, a.name AS artist_name, a.slug AS artist_slug
-             FROM documents d
-             LEFT JOIN artists a ON a.id = d.artist_id
-             ORDER BY d.title'
-        );
     }
 
     public function redirect(string $path): ?string

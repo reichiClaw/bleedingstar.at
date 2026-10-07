@@ -164,10 +164,6 @@ final class CatalogRepository
             [$artist['id']]
         );
         $this->attachArtists($artist['releases']);
-        $artist['documents'] = $this->db->all(
-            'SELECT title, file_url FROM documents WHERE artist_id = ? ORDER BY title',
-            [$artist['id']]
-        );
         return $artist;
     }
 
