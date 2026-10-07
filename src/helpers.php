@@ -35,6 +35,21 @@ function release_type_label(?string $type): string
     };
 }
 
+function excerpt(?string $html, int $max = 180): string
+{
+    $spaced = preg_replace('#</(p|h[1-6]|li|div|blockquote)>|<br\s*/?>#i', ' ', $html ?? '') ?? '';
+    $text = trim(preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($spaced), ENT_QUOTES | ENT_HTML5, 'UTF-8')) ?? '');
+    if (mb_strlen($text) <= $max) {
+        return $text;
+    }
+    $cut = mb_substr($text, 0, $max);
+    $space = mb_strrpos($cut, ' ');
+    if ($space !== false && $space > $max * 0.6) {
+        $cut = mb_substr($cut, 0, $space);
+    }
+    return rtrim($cut, " ,;:-–") . ' …';
+}
+
 function normalize_match_key(string $value): string
 {
     $value = mb_strtolower(trim($value));
@@ -59,6 +74,32 @@ function slugify(string $value): string
 function client_ip(): string
 {
     return substr($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0', 0, 64);
+}
+
+/**
+ * Cache-busting token for a file below the document root (public/ in the repository,
+ * the FTP root on the server). Falls back to a constant when the file is not readable.
+ */
+function asset_version(string $webPath): string
+{
+    static $cache = [];
+    if (isset($cache[$webPath])) {
+        return $cache[$webPath];
+    }
+    $roots = [
+        (string) ($_SERVER['DOCUMENT_ROOT'] ?? ''),
+        app_root() . '/public',
+        dirname(app_root()),
+    ];
+    foreach ($roots as $root) {
+        if ($root !== '' && is_file($root . $webPath)) {
+            $mtime = @filemtime($root . $webPath);
+            if ($mtime !== false) {
+                return $cache[$webPath] = dechex($mtime);
+            }
+        }
+    }
+    return $cache[$webPath] = '1';
 }
 
 function request_path(): string

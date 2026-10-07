@@ -64,13 +64,28 @@ final class Web
 
     private function home(): void
     {
+        $featured = $this->catalog->featured();
+        $latest = $this->catalog->latest(9);
+        if ($featured) {
+            $latest = array_values(array_filter($latest, static fn (array $r): bool => (int) $r['id'] !== (int) $featured['id']));
+        }
+        $description = 'BleedingStar Music Services: Label, Production und Rental.';
+        if ($featured) {
+            $names = implode(', ', array_column($featured['artists'], 'name'));
+            $description = 'Neu: ' . $featured['title'] . ($names !== '' ? ' von ' . $names : '') . '. ' . $description;
+        }
         $this->render('home', [
             'title' => 'BleedingStar',
-            'description' => 'BleedingStar Music Services: Label, Production und Rental.',
+            'description' => $description,
             'current' => '',
-            'releases' => $this->catalog->latest(8),
+            'featured' => $featured,
+            'releases' => array_slice($latest, 0, 8),
+            'total' => $this->catalog->count(),
+            'artists' => $this->catalog->artistsWithReleases(),
             'label' => $this->content->page('label'),
             'production' => $this->content->page('production'),
+            'rental' => $this->content->page('rental'),
+            'ogImage' => $featured ? ($this->catalog->cover($featured)['url'] ?? null) : null,
         ]);
     }
 

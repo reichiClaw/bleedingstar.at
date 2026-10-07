@@ -9,6 +9,7 @@ $date = format_release_date(
     (string) $release['release_date_precision']
 );
 $type = release_type_label($release['release_type'] ?? null);
+$year = $date !== '' ? $date : (string) ($release['release_year'] ?? '');
 ?>
 <article class="card">
   <a class="cover-link" href="/releases/<?= e($release['slug']) ?>">
@@ -18,8 +19,9 @@ $type = release_type_label($release['release_type'] ?? null);
       <?php else: ?>
         <span class="ph" aria-hidden="true"><?= e(mb_substr($release['title'], 0, 1)) ?></span>
       <?php endif; ?>
+      <?php if ($type): ?><span class="card__type"><?= e($type) ?></span><?php endif; ?>
     </span>
-    <h2><?= e($release['title']) ?></h2>
+    <h2 class="card__title"><?= e($release['title']) ?></h2>
   </a>
   <p class="by">
     <?php foreach ($release['artists'] as $i => $artist): ?>
@@ -31,5 +33,5 @@ $type = release_type_label($release['release_type'] ?? null);
       <?php endif; ?>
     <?php endforeach; ?>
   </p>
-  <p class="meta"><?= e(trim($type . ($type && $date ? ' · ' : '') . ($date ? $date : ($release['release_year'] ?? '')))) ?></p>
+  <?php if ($year !== ''): ?><p class="meta"><?= e($year) ?></p><?php endif; ?>
 </article>

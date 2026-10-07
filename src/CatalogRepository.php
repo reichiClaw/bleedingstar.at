@@ -96,6 +96,24 @@ final class CatalogRepository
         return $rows;
     }
 
+    /**
+     * Newest (or explicitly featured) release with links, tracks and formats for the home hero.
+     */
+    public function featured(): ?array
+    {
+        $rows = $this->latest(1);
+        if (!$rows) {
+            return null;
+        }
+        return $this->hydrate($rows[0]);
+    }
+
+    public function count(): int
+    {
+        $row = $this->db->one("SELECT COUNT(*) AS c FROM releases WHERE status = 'published'");
+        return (int) ($row['c'] ?? 0);
+    }
+
     public function findRelease(string $slug): ?array
     {
         $row = $this->db->one("SELECT * FROM releases WHERE slug = ? AND status = 'published'", [$slug]);
@@ -104,7 +122,14 @@ final class CatalogRepository
         }
         $rows = [$row];
         $this->attachArtists($rows);
-        $row = $rows[0];
+        $row = $this->hydrate($rows[0]);
+        $row['related'] = $this->related($row);
+        $row['facts'] = $this->discogsFacts((int) $row['id']);
+        return $row;
+    }
+
+    private function hydrate(array $row): array
+    {
         $row['tracks'] = $this->db->all(
             'SELECT title, duration, stream_url, isrc, position FROM tracks WHERE release_id = ? ORDER BY position',
             [$row['id']]
@@ -117,8 +142,6 @@ final class CatalogRepository
             'SELECT name, catalog_number, upc, details FROM release_formats WHERE release_id = ? ORDER BY id',
             [$row['id']]
         );
-        $row['related'] = $this->related($row);
-        $row['facts'] = $this->discogsFacts((int) $row['id']);
         return $row;
     }
 

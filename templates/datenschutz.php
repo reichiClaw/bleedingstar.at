@@ -1,5 +1,5 @@
-<article class="wrap section prose-page">
-  <h1>Datenschutz</h1>
+<article class="wrap section prose-page prose-page--legal">
+  <header class="section__head"><p class="eyebrow">Rechtliches</p><h1 class="section__title">Datenschutz</h1></header>
   <div class="prose">
     <p>Verantwortlich: <?= e($identity['name']) ?>, <?= e($identity['brand']) ?>, <?= e($identity['street']) ?>, <?= e($identity['postal']) ?>, <a href="mailto:<?= e($identity['email']) ?>"><?= e($identity['email']) ?></a>.</p>
     <h2>Hosting</h2>

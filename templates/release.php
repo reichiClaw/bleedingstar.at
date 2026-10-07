@@ -25,90 +25,106 @@ if ($release['release_date_precision'] === 'day' && $release['release_year'] && 
     $ld['datePublished'] = (string) (int) $release['release_year'];
 }
 ?>
-<article class="wrap section release">
-  <p class="kicker"><a href="/releases">Releases</a></p>
-  <div class="release-hero">
-    <div class="cover lg">
-      <?php if ($cover): ?>
-        <img src="<?= e($cover['url']) ?>" alt="Cover: <?= e($release['title']) ?>" width="800" height="800">
-      <?php else: ?>
-        <span class="ph" aria-hidden="true"><?= e(mb_substr($release['title'], 0, 1)) ?></span>
-      <?php endif; ?>
-    </div>
-    <div>
-      <h1><?= e($release['title']) ?></h1>
-      <p class="by lg">
-        <?php foreach ($release['artists'] as $i => $artist): ?>
-          <?php if ($i): ?>, <?php endif; ?>
-          <?php if (($artist['status'] ?? '') === 'published'): ?>
-            <a href="/artists/<?= e($artist['slug']) ?>"><?= e($artist['name']) ?></a>
-          <?php else: ?><?= e($artist['name']) ?><?php endif; ?>
-        <?php endforeach; ?>
-      </p>
-      <p class="meta"><?= e(trim($type . ($date ? ' · ' . $date : ''))) ?></p>
-      <?php if ($release['formats']): ?>
-        <ul class="formats">
-          <?php foreach ($release['formats'] as $format): ?>
-            <li><?= e($format['name']) ?><?= $format['details'] ? ' · ' . e($format['details']) : '' ?><?= $format['catalog_number'] ? ' · ' . e($format['catalog_number']) : '' ?><?= $format['upc'] ? ' · UPC ' . e($format['upc']) : '' ?></li>
-          <?php endforeach; ?>
-        </ul>
-      <?php endif; ?>
-      <?php if ($release['links']): ?>
-        <p class="actions">
-          <?php foreach ($release['links'] as $link): ?>
-            <a class="btn btn-ghost" href="<?= e($link['url']) ?>" rel="noopener noreferrer"><?= e($link['label']) ?></a>
-            <?php if (($link['provider'] ?? '') === 'spotify'): ?>
-              <button class="btn btn-accent" type="button" data-embed="<?= e($link['url']) ?>">Player laden</button>
-            <?php endif; ?>
+<?php
+  $facts = $release['facts'] ?? [];
+  $factLine = array_filter([
+      implode(' · ', $facts['genres'] ?? []),
+      implode(' · ', $facts['styles'] ?? []),
+      $facts['country'] ?? '',
+  ]);
+?>
+<article class="section section--page release">
+  <div class="wrap">
+    <p class="eyebrow"><a href="/releases">Releases</a></p>
+    <div class="release-hero">
+      <figure class="release-hero__figure">
+        <div class="cover lg">
+          <?php if ($cover): ?>
+            <img src="<?= e($cover['url']) ?>" alt="Cover: <?= e($release['title']) ?>" width="800" height="800" fetchpriority="high">
+          <?php else: ?>
+            <span class="ph" aria-hidden="true"><?= e(mb_substr($release['title'], 0, 1)) ?></span>
+          <?php endif; ?>
+        </div>
+        <?php if ($cover && $cover['external']): ?>
+          <figcaption class="attr"><?php if ($cover['page']): ?><a href="<?= e($cover['page']) ?>" rel="noopener noreferrer"><?= e($cover['attribution']) ?></a><?php else: ?><?= e($cover['attribution']) ?><?php endif; ?></figcaption>
+        <?php endif; ?>
+      </figure>
+      <div class="release-hero__body">
+        <h1 class="release-hero__title"><?= e($release['title']) ?></h1>
+        <p class="by lg">
+          <?php foreach ($release['artists'] as $i => $artist): ?>
+            <?php if ($i): ?>, <?php endif; ?>
+            <?php if (($artist['status'] ?? '') === 'published'): ?>
+              <a href="/artists/<?= e($artist['slug']) ?>"><?= e($artist['name']) ?></a>
+            <?php else: ?><?= e($artist['name']) ?><?php endif; ?>
           <?php endforeach; ?>
         </p>
-        <div id="player-slot" class="player-slot" hidden></div>
+        <p class="meta"><?= e(trim($type . ($date ? ' · ' . $date : ''))) ?><?= $factLine ? ' · ' . e(implode(' · ', $factLine)) : '' ?></p>
+        <?php if ($release['formats']): ?>
+          <ul class="formats">
+            <?php foreach ($release['formats'] as $format): ?>
+              <li><?= e($format['name']) ?><?= $format['details'] ? ' · ' . e($format['details']) : '' ?><?= $format['catalog_number'] ? ' · ' . e($format['catalog_number']) : '' ?><?= $format['upc'] ? ' · UPC ' . e($format['upc']) : '' ?></li>
+            <?php endforeach; ?>
+          </ul>
+        <?php endif; ?>
+        <?php if ($release['links']): ?>
+          <p class="actions">
+            <?php foreach ($release['links'] as $link): ?>
+              <a class="btn btn-ghost" href="<?= e($link['url']) ?>" rel="noopener noreferrer"><?= e($link['label']) ?></a>
+              <?php if (($link['provider'] ?? '') === 'spotify'): ?>
+                <button class="btn btn-accent" type="button" data-embed="<?= e($link['url']) ?>">Player laden</button>
+              <?php endif; ?>
+            <?php endforeach; ?>
+          </p>
+          <div id="player-slot" class="player-slot" hidden></div>
+        <?php endif; ?>
+        <?php if (trim(strip_tags($release['description_html'] ?? '')) !== ''): ?>
+          <div class="prose release-hero__text"><?= $release['description_html'] ?></div>
+        <?php endif; ?>
+      </div>
+    </div>
+    <div class="release-details">
+      <?php if ($release['tracks']): ?>
+        <section class="release-details__block" aria-labelledby="tracks-title">
+          <h2 class="section__subtitle" id="tracks-title">Tracks</h2>
+          <ol class="tracks">
+            <?php foreach ($release['tracks'] as $track): ?>
+              <li>
+                <span class="tracks__title"><?= e($track['title']) ?></span>
+                <?php if ($track['isrc']): ?><span class="dur tracks__isrc">ISRC <?= e($track['isrc']) ?></span><?php endif; ?>
+                <?php if ($track['duration']): ?><span class="dur"><?= e($track['duration']) ?></span><?php endif; ?>
+              </li>
+            <?php endforeach; ?>
+          </ol>
+        </section>
       <?php endif; ?>
-      <?php if ($cover && $cover['external']): ?>
-        <p class="attr"><?php if ($cover['page']): ?><a href="<?= e($cover['page']) ?>" rel="noopener noreferrer"><?= e($cover['attribution']) ?></a><?php else: ?><?= e($cover['attribution']) ?><?php endif; ?></p>
+      <?php if (!empty($facts['credits'])): ?>
+        <section class="release-details__block" aria-labelledby="credits-title">
+          <h2 class="section__subtitle" id="credits-title">Credits</h2>
+          <ul class="lined">
+            <?php foreach ($facts['credits'] as $credit): ?>
+              <li><span><?= e($credit['role'] !== '' ? $credit['role'] : 'Credit') ?></span><span><?= e($credit['name']) ?></span></li>
+            <?php endforeach; ?>
+          </ul>
+        </section>
       <?php endif; ?>
     </div>
+    <?php if ($release['related']): ?>
+      <section class="related" aria-labelledby="related-title">
+        <header class="section__head section__head--split">
+          <div>
+            <p class="eyebrow">Mehr davon</p>
+            <h2 class="section__title section__title--small" id="related-title">Weitere Releases</h2>
+          </div>
+        </header>
+        <div class="grid">
+          <?php foreach ($release['related'] as $rel): ?>
+            <?php $release = $rel; $eager = false; include __DIR__ . '/partials/card.php'; ?>
+          <?php endforeach; ?>
+        </div>
+      </section>
+    <?php endif; ?>
   </div>
-  <?php
-    $facts = $release['facts'] ?? [];
-    $factLine = array_filter([
-        implode(' · ', $facts['genres'] ?? []),
-        implode(' · ', $facts['styles'] ?? []),
-        $facts['country'] ?? '',
-    ]);
-  ?>
-  <?php if ($factLine): ?><p class="meta"><?= e(implode(' · ', $factLine)) ?></p><?php endif; ?>
-  <?php if (!empty($facts['credits'])): ?>
-    <h2>Credits</h2>
-    <ul class="lined">
-      <?php foreach ($facts['credits'] as $credit): ?>
-        <li><span><?= e($credit['role'] !== '' ? $credit['role'] : 'Credit') ?></span><span><?= e($credit['name']) ?></span></li>
-      <?php endforeach; ?>
-    </ul>
-  <?php endif; ?>
-  <?php if (trim(strip_tags($release['description_html'] ?? '')) !== ''): ?>
-    <div class="prose"><?= $release['description_html'] ?></div>
-  <?php endif; ?>
-  <?php if ($release['tracks']): ?>
-    <h2>Tracks</h2>
-    <ol class="tracks">
-      <?php foreach ($release['tracks'] as $track): ?>
-        <li>
-          <span><?= e($track['title']) ?></span>
-          <?php if ($track['duration']): ?><span class="dur"><?= e($track['duration']) ?></span><?php endif; ?>
-          <?php if ($track['isrc']): ?><span class="dur">ISRC <?= e($track['isrc']) ?></span><?php endif; ?>
-        </li>
-      <?php endforeach; ?>
-    </ol>
-  <?php endif; ?>
-  <?php if ($release['related']): ?>
-    <h2>Weitere Releases</h2>
-    <div class="grid">
-      <?php foreach ($release['related'] as $rel): ?>
-        <?php $release = $rel; $eager = false; include __DIR__ . '/partials/card.php'; ?>
-      <?php endforeach; ?>
-    </div>
-  <?php endif; ?>
 </article>
 <script type="application/ld+json" nonce="<?= e($GLOBALS['csp_nonce'] ?? '') ?>"><?= json_encode($ld, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?></script>
 <script src="/assets/js/embed.js"></script>

@@ -1,6 +1,6 @@
-<article class="wrap section">
-  <p class="kicker"><a href="/rental">Rental</a> · <?= e($item['category_name']) ?></p>
-  <h1><?= e($item['name']) ?></h1>
+<article class="wrap section section--page">
+  <p class="eyebrow"><a href="/rental">Rental</a> · <?= e($item['category_name']) ?></p>
+  <h1 class="section__title"><?= e($item['name']) ?></h1>
   <p class="lede"><?= e($item['summary']) ?></p>
   <div class="prose"><?= $item['description_html'] ?></div>
   <?php if (trim(strip_tags((string) $item['specs_html'])) !== ''): ?>

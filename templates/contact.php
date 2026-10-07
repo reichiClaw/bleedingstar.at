@@ -1,13 +1,16 @@
-<section class="wrap section split contact">
-  <div>
-    <h1>Kontakt</h1>
-    <p><?= e($identity['name']) ?><br><?= e($identity['brand']) ?><br><?= e($identity['street']) ?><br><?= e($identity['postal']) ?></p>
-    <p><a href="tel:<?= e($identity['phone_href']) ?>"><?= e($identity['phone']) ?></a><br>
-    <a href="mailto:<?= e($identity['email']) ?>"><?= e($identity['email']) ?></a></p>
-    <p>UID: <?= e($identity['uid']) ?></p>
-    <p><a href="<?= e($identity['personal_site']) ?>">reichi.com</a></p>
+<section class="wrap section section--page split contact">
+  <div class="contact__intro">
+    <p class="eyebrow">Anfrage</p>
+    <h1 class="section__title">Kontakt</h1>
+    <p class="section__note">Release, Tour, Aufnahme oder Equipment: eine kurze Nachricht reicht, Rückmeldung kommt direkt.</p>
+    <address class="contact__address">
+      <p><strong><?= e($identity['name']) ?></strong><br><?= e($identity['brand']) ?><br><?= e($identity['street']) ?><br><?= e($identity['postal']) ?></p>
+      <p><a href="tel:<?= e($identity['phone_href']) ?>"><?= e($identity['phone']) ?></a><br>
+      <a href="mailto:<?= e($identity['email']) ?>"><?= e($identity['email']) ?></a></p>
+      <p class="meta">UID <?= e($identity['uid']) ?> · <a href="<?= e($identity['personal_site']) ?>" rel="noopener">reichi.com</a></p>
+    </address>
   </div>
-  <div>
+  <div class="contact__form">
     <?php if ($sent): ?>
       <p class="note" role="status">Die Anfrage ist eingegangen. Wenn der Mailversand auf diesem Server eingerichtet ist, liegt sie zusätzlich im Postfach.</p>
     <?php endif; ?>
