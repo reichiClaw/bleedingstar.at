@@ -5,13 +5,22 @@ declare(strict_types=1);
 namespace App\Discogs;
 
 /**
- * Saves the largest Discogs cover on this server and, when it is
+ * Saves the largest provider cover on this server and, when it is
  * bigger than the grid, writes a smaller file derived from that original.
+ * Used for Discogs by default; other providers pass their name and CDN hosts.
  */
 final class Covers
 {
-    public function __construct(private string $root, private string $userAgent)
-    {
+    /** @param list<string> $hosts host names (or suffixes) the cover may be downloaded from */
+    public function __construct(
+        private string $root,
+        private string $userAgent,
+        private string $provider = 'discogs',
+        private array $hosts = ['discogs.com'],
+    ) {
+        if (!preg_match('/^[a-z0-9-]+$/', $this->provider)) {
+            throw new \InvalidArgumentException('provider name');
+        }
     }
 
     public function store(string $externalId, string $url): ?array
@@ -24,6 +33,24 @@ final class Covers
             return null;
         }
         return $this->fromBytes($externalId, $bytes);
+    }
+
+    /** Paths of a cover stored by an earlier run, or null when none is on disk. */
+    public function existing(string $externalId): ?array
+    {
+        if (!preg_match('/^\d+$/', $externalId)) {
+            return null;
+        }
+        $dir = $this->root . '/storage/uploads/covers/' . $this->provider;
+        foreach (['jpg', 'png', 'gif', 'webp'] as $ext) {
+            if (is_file($dir . '/' . $externalId . '.' . $ext)) {
+                return [
+                    'full' => 'covers/' . $this->provider . '/' . $externalId . '.' . $ext,
+                    'grid' => is_file($dir . '/' . $externalId . '-640.jpg') ? 'covers/' . $this->provider . '/' . $externalId . '-640.jpg' : null,
+                ];
+            }
+        }
+        return null;
     }
 
     public function fromBytes(string $externalId, string $bytes): ?array
@@ -45,7 +72,7 @@ final class Covers
         if ($ext === '') {
             return null;
         }
-        $dir = $this->root . '/storage/uploads/covers/discogs';
+        $dir = $this->root . '/storage/uploads/covers/' . $this->provider;
         if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
             return null;
         }
@@ -57,11 +84,11 @@ final class Covers
         if (max((int) $info[0], (int) $info[1]) > 640) {
             $small = $this->shrink($bytes, 640);
             if ($small !== null && file_put_contents($dir . '/' . $externalId . '-640.jpg', $small) !== false) {
-                $grid = 'covers/discogs/' . $externalId . '-640.jpg';
+                $grid = 'covers/' . $this->provider . '/' . $externalId . '-640.jpg';
             }
         }
         return [
-            'full' => 'covers/discogs/' . $fullName,
+            'full' => 'covers/' . $this->provider . '/' . $fullName,
             'grid' => $grid,
         ];
     }
@@ -73,7 +100,12 @@ final class Covers
             return false;
         }
         $host = strtolower((string) ($parts['host'] ?? ''));
-        return $host === 'discogs.com' || str_ends_with($host, '.discogs.com');
+        foreach ($this->hosts as $allowed) {
+            if ($host === $allowed || str_ends_with($host, '.' . $allowed)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function download(string $url): ?string
