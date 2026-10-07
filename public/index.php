@@ -53,7 +53,7 @@ try {
     $config = app_config();
     $db = app_db();
 } catch (Throwable $e) {
-    error_log('bleedingstar: not configured: ' . $e->getMessage());
+    error_log('bleedingstar: not configured (PHP ' . PHP_VERSION . '): ' . $e->getMessage());
     bs_offline(503, 'Die Seite wird gerade eingerichtet.', 'Die Datenbank ist noch nicht angebunden. Die Inhalte sind in Kürze wieder erreichbar.');
     exit;
 }
