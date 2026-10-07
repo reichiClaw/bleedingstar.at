@@ -61,6 +61,9 @@ $admin = $admin ?? false;
   </div>
 </header>
 <main id="inhalt">
+<?php if (!empty($flash)): ?>
+  <div class="wrap"><p class="error" role="alert"><?= e($flash) ?></p></div>
+<?php endif; ?>
 <?= $content ?>
 </main>
 <footer class="site-footer">

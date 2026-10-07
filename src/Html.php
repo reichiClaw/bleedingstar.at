@@ -18,6 +18,8 @@ final class Html
         $html = strip_tags($html, self::ALLOWED);
         $html = preg_replace_callback('/<img\b[^>]*>/i', [self::class, 'filterImage'], $html) ?? $html;
         $html = preg_replace_callback('/<a\b[^>]*>/i', [self::class, 'filterAnchor'], $html) ?? $html;
+        // Every other allowed tag loses its attributes; only the rebuilt <a> and <img> keep theirs.
+        $html = preg_replace('#<(/?)(p|br|strong|em|b|i|ul|ol|li|h2|h3|blockquote|figure|figcaption)\b[^>]*>#i', '<$1$2>', $html) ?? $html;
         return trim($html);
     }
 
@@ -63,7 +65,8 @@ final class Html
             return '<a>';
         }
         $url = $href[2];
-        if (!self::allowedUrl($url) && !str_starts_with($url, '/') && !str_starts_with($url, 'mailto:') && !str_starts_with($url, 'tel:')) {
+        $local = str_starts_with($url, '/') && !str_starts_with($url, '//');
+        if (!self::allowedUrl($url) && !$local && !str_starts_with($url, 'mailto:') && !str_starts_with($url, 'tel:')) {
             return '<a>';
         }
         return '<a href="' . e($url) . '" rel="noopener noreferrer">';

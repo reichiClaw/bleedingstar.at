@@ -19,6 +19,10 @@ final class Web
         if ($method === 'HEAD') {
             $method = 'GET';
         }
+        if ($path === '/setup') {
+            $this->setup($method);
+            return;
+        }
         if ($path !== '/' && ($target = $this->content->redirect($path))) {
             header('Location: ' . $target, true, 301);
             return;
@@ -204,7 +208,7 @@ final class Web
             'current' => 'kontakt',
             'sent' => isset($_GET['gesendet']),
             'errors' => [],
-            'old' => ['topic' => $_GET['thema'] ?? 'allgemein', 'name' => '', 'email' => '', 'message' => ''],
+            'old' => ['topic' => is_string($_GET['thema'] ?? null) ? $_GET['thema'] : 'allgemein', 'name' => '', 'email' => '', 'message' => ''],
             'cart' => $this->cartLines(),
             'identity' => $this->config['identity'],
         ]);
@@ -423,6 +427,37 @@ final class Web
             }
         }
         return $lines;
+    }
+
+    /** One-shot installer for hosting without shell access; disabled once storage/install.done exists. */
+    private function setup(string $method): void
+    {
+        $installer = new Installer(app_db(), app_root());
+        $token = $method === 'POST' ? ($_POST['token'] ?? null) : ($_GET['token'] ?? null);
+        if (!$installer->webAllowed($this->config, is_string($token) ? $token : null)) {
+            $this->notFound();
+            return;
+        }
+        header('X-Robots-Tag: noindex, nofollow');
+        $data = ['title' => 'Einrichtung', 'description' => '', 'current' => '', 'token' => $token, 'errors' => [], 'done' => false, 'stats' => null];
+        if ($method !== 'POST') {
+            $this->render('setup', $data);
+            return;
+        }
+        $email = trim((string) ($_POST['email'] ?? ''));
+        $password = (string) ($_POST['password'] ?? '');
+        try {
+            $installer->schema();
+            $stats = isset($_POST['import']) ? $installer->import($this->config['legacy_export']) : null;
+            $installer->admin($email, $password);
+            $installer->finish();
+            $data['done'] = true;
+            $data['stats'] = $stats;
+        } catch (\Throwable $e) {
+            error_log('setup: ' . $e->getMessage());
+            $data['errors'][] = $e instanceof \RuntimeException ? $e->getMessage() : 'Die Einrichtung ist fehlgeschlagen. Details stehen im Fehlerprotokoll.';
+        }
+        $this->render('setup', $data);
     }
 
     private function notFound(): void

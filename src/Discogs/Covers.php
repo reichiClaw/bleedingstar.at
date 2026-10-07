@@ -84,6 +84,8 @@ final class Covers
             CURLOPT_TIMEOUT => 30,
             CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_MAXFILESIZE => 15 * 1024 * 1024,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_HTTPHEADER => ['User-Agent: ' . $this->userAgent, 'Accept: image/*'],
         ]);
         $raw = curl_exec($ch);

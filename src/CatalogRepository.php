@@ -12,6 +12,7 @@ final class CatalogRepository
 
     public function search(array $filters): array
     {
+        $filters = array_filter($filters, static fn ($v) => is_scalar($v));
         $where = ["r.status = 'published'"];
         $params = [];
 

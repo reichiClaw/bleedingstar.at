@@ -569,21 +569,6 @@ final class Sync
         return null;
     }
 
-    private function primaryImage(array $detail): ?string
-    {
-        foreach ($detail['images'] ?? [] as $image) {
-            if (($image['type'] ?? '') === 'primary' && !empty($image['uri'])) {
-                return (string) $image['uri'];
-            }
-        }
-        foreach ($detail['images'] ?? [] as $image) {
-            if (!empty($image['uri'])) {
-                return (string) $image['uri'];
-            }
-        }
-        return null;
-    }
-
     private function entityId(string $type, string $externalId): ?int
     {
         $row = $this->db->one(

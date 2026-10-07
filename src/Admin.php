@@ -123,8 +123,8 @@ final class Admin
         $type = in_array($type, ['single', 'ep', 'album', 'compilation'], true) ? $type : null;
         $yearRaw = trim((string) ($_POST['release_year'] ?? ''));
         $year = $yearRaw !== '' ? (int) $yearRaw : null;
-        $month = $precision === 'day' || $precision === 'month' ? (int) ($_POST['release_month'] ?: 0) : null;
-        $day = $precision === 'day' ? (int) ($_POST['release_day'] ?: 0) : null;
+        $month = $precision === 'day' || $precision === 'month' ? (int) $this->post('release_month') : null;
+        $day = $precision === 'day' ? (int) $this->post('release_day') : null;
         if ($month === 0) {
             $month = null;
         }
@@ -134,7 +134,7 @@ final class Admin
         $cover = $row['cover_path'];
         $source = $row['cover_source'];
         if (!empty($_FILES['cover']['name'])) {
-            $stored = (new Uploader(app_root()))->image($_FILES['cover'], 'covers');
+            $stored = $this->upload($_FILES['cover'], 'covers');
             if ($stored) {
                 $cover = $stored;
                 $source = 'upload';
@@ -143,7 +143,7 @@ final class Admin
         $this->db->exec(
             'UPDATE releases SET title=?, description_html=?, status=?, featured=?, release_type=?, release_year=?, release_month=?, release_day=?, release_date_precision=?, cover_path=?, cover_source=?, editorial_locked=1, updated_at=NOW() WHERE id=?',
             [
-                trim((string) $_POST['title']),
+                $this->post('title'),
                 Html::clean($_POST['description_html'] ?? ''),
                 $status,
                 isset($_POST['featured']) ? 1 : 0,
@@ -219,13 +219,13 @@ final class Admin
         }
         $imageSql = '';
         $params = [
-            trim((string) $_POST['name']),
+            $this->post('name'),
             Html::clean($_POST['bio_html'] ?? ''),
             $status,
-            trim((string) ($_POST['website'] ?? '')) ?: null,
+            $this->website($this->post('website')),
         ];
         if (!empty($_FILES['image']['name'])) {
-            $stored = (new Uploader(app_root()))->image($_FILES['image'], 'artists');
+            $stored = $this->upload($_FILES['image'], 'artists');
             if ($stored) {
                 $imageSql = ', image_path=?, image_source="upload"';
                 $params[] = $stored;
@@ -257,7 +257,7 @@ final class Admin
         }
         $this->db->exec(
             'UPDATE pages SET title=?, body_html=?, updated_at=NOW() WHERE slug=?',
-            [trim((string) $_POST['title']), Html::clean($_POST['body_html'] ?? ''), $slug]
+            [$this->post('title'), Html::clean($_POST['body_html'] ?? ''), $slug]
         );
         header('Location: /admin/pages/' . $slug, true, 303);
     }
@@ -287,8 +287,8 @@ final class Admin
         $this->db->exec(
             'UPDATE rental_items SET name=?, summary=?, description_html=?, specs_html=?, status=?, price_cents=?, price_public=? WHERE id=?',
             [
-                trim((string) $_POST['name']),
-                trim((string) $_POST['summary']),
+                $this->post('name'),
+                $this->post('summary'),
                 Html::clean($_POST['description_html'] ?? ''),
                 Html::clean($_POST['specs_html'] ?? ''),
                 $status,
@@ -346,6 +346,43 @@ final class Admin
         echo 'Nicht gefunden.';
     }
 
+    private function post(string $key): string
+    {
+        $value = $_POST[$key] ?? '';
+        return is_string($value) ? trim($value) : '';
+    }
+
+    private function website(string $url): ?string
+    {
+        if ($url === '') {
+            return null;
+        }
+        if (!preg_match('#^https?://#i', $url)) {
+            $url = 'https://' . $url;
+        }
+        $host = parse_url($url, PHP_URL_HOST);
+        if (!is_string($host) || $host === '' || filter_var($url, FILTER_VALIDATE_URL) === false) {
+            $this->flash('Die Website-Adresse wurde nicht übernommen (ungültige URL).');
+            return null;
+        }
+        return mb_substr($url, 0, 255);
+    }
+
+    private function upload(array $file, string $folder): ?string
+    {
+        try {
+            return (new Uploader(app_root()))->image($file, $folder);
+        } catch (\Throwable $e) {
+            $this->flash('Bild nicht übernommen: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    private function flash(string $message): void
+    {
+        $_SESSION['admin_flash'] = $message;
+    }
+
     private function render(string $template, array $data): void
     {
         header('Content-Type: text/html; charset=utf-8');
@@ -353,6 +390,8 @@ final class Admin
             'baseUrl' => rtrim($this->config['base_url'], '/'),
             'adminUser' => $this->auth->user(),
         ]);
-        echo $view->render($template, $data + ['admin' => true]);
+        $flash = $_SESSION['admin_flash'] ?? null;
+        unset($_SESSION['admin_flash']);
+        echo $view->render($template, $data + ['admin' => true, 'flash' => $flash]);
     }
 }
