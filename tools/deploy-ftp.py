@@ -348,7 +348,8 @@ def cmd_diff(args, do_upload=False):
     for remote, why in order:
         ensure_dirs(ftp, dirs, remote)
         size = ftp.upload_file(local[remote], remote)
-        cache.pop(remote, None)
+        with open(local[remote], "rb") as fh:
+            cache[remote] = {"size": size, "sha256": sha256(fh.read())}
         uploaded.append((remote, size))
         print(f"  uploaded {remote} ({size} B, {why})")
     if config_upload:
