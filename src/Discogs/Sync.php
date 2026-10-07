@@ -15,7 +15,8 @@ final class Sync
         }
     }
 
-    public function importLabel(bool $dryRun, ?int $maxPages = null): array
+    /** @param float|null $deadline unix time after which the run stops cleanly; the next run resumes */
+    public function importLabel(bool $dryRun, ?int $maxPages = null, ?float $deadline = null): array
     {
         $stats = ['created' => 0, 'updated' => 0, 'reviews' => 0, 'errors' => 0, 'skipped' => 0, 'message' => ''];
         $labelId = (int) $this->config['label_id'];
@@ -37,6 +38,10 @@ final class Sync
                 $id = (string) ($row['id'] ?? '');
                 if ($id === '') {
                     continue;
+                }
+                if ($deadline !== null && microtime(true) > $deadline) {
+                    $stats['message'] = trim($stats['message'] . ' time budget reached, next run continues');
+                    break 2;
                 }
                 try {
                     $this->importOne($id, $dryRun, $stats);

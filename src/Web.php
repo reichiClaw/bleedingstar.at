@@ -23,6 +23,10 @@ final class Web
             $this->setup($method);
             return;
         }
+        if ($path === '/jobs/run') {
+            $this->runJob();
+            return;
+        }
         if ($path !== '/' && ($target = $this->content->redirect($path))) {
             header('Location: ' . $target, true, 301);
             return;
@@ -458,6 +462,39 @@ final class Web
             $data['errors'][] = $e instanceof \RuntimeException ? $e->getMessage() : 'Die Einrichtung ist fehlgeschlagen. Details stehen im Fehlerprotokoll.';
         }
         $this->render('setup', $data);
+    }
+
+    /**
+     * Web entry for the catalogue sync, for hosting whose cron can only call URLs.
+     * Needs config['cron_token'] (32+ characters) and ?token=…; ?source= runs one
+     * source so each request stays within the execution time limit. The sources
+     * also stop on their own before JobRunner::deadline() and resume next time.
+     */
+    private function runJob(): void
+    {
+        $expected = (string) ($this->config['cron_token'] ?? '');
+        $token = $_POST['token'] ?? $_GET['token'] ?? null;
+        if (strlen($expected) < 32 || !is_string($token) || !hash_equals($expected, $token)) {
+            $this->notFound();
+            return;
+        }
+        $source = $_POST['source'] ?? $_GET['source'] ?? null;
+        if (!in_array($source, ['discogs', 'deezer', 'apple'], true)) {
+            $source = null;
+        }
+        $dry = isset($_GET['dry']) || isset($_POST['dry']);
+        ignore_user_abort(true);
+        header('Content-Type: text/plain; charset=utf-8');
+        header('Cache-Control: no-store');
+        header('X-Robots-Tag: noindex, nofollow');
+        $runner = new JobRunner(app_db(), app_root());
+        $result = $runner->run('sync-releases', $dry, fn () => $runner->syncReleases($this->config, $dry, $source));
+        http_response_code(match ($result['status']) {
+            'ok', 'quota' => 200,
+            'locked' => 409,
+            default => 500,
+        });
+        echo $result['line'];
     }
 
     private function notFound(): void
