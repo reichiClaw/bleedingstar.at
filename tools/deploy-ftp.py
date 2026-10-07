@@ -251,6 +251,12 @@ def compare(ftp, local, server, cache):
         if is_runtime(remote):
             skipped.append((remote, "runtime data"))
             continue
+        if remote not in server and os.path.dirname(remote) in SHALLOW:
+            # Inside a directory the walk did not enter: ask for the size directly.
+            try:
+                server[remote] = ftp.size(remote) or 0
+            except error_perm:
+                pass
         if remote not in server:
             to_upload.append((remote, "new"))
             continue
