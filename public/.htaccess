@@ -2,6 +2,10 @@ AddDefaultCharset UTF-8
 IndexIgnore *
 Options -Indexes
 
+# Denied paths answer with Apache's own 403 page instead of a hoster-wide error document
+# that would route them into the front controller.
+ErrorDocument 403 default
+
 RewriteEngine On
 
 # Force https and the canonical host.

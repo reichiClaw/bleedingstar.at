@@ -70,7 +70,7 @@ EXTRA_FILES = [
     ("deploy/wp-uploads.htaccess", "/wp-content/uploads/.htaccess"),
 ]
 # Local files that must never reach the server.
-LOCAL_SKIP = {"/router.php", "/app/config/config.php"}
+LOCAL_SKIP = {"/router.php", "/app/config/config.php", "/app/storage/install.done"}
 LOCAL_SKIP_NAMES = {".DS_Store"}
 
 CONFIG_REMOTE = "/app/config/config.php"
@@ -211,8 +211,13 @@ def local_tree():
 
 # Directories on the server that are not part of this project and are large.
 # They are listed one level deep only, so `list` and `diff` stay fast.
-SHALLOW = {"/wp-content/uploads", "/files", "/fileserver", "/downloadserver", "/download",
-           "/stats", "/imunify-antivirus", "/_archiv-alt", "/app/storage/uploads"}
+# Listed one level deep only: legacy applications that this project never touches, the old
+# WordPress media folder (kept for old links), the archive and our own upload tree.
+SHALLOW = {"/wp-content", "/wp-content/uploads", "/wp-admin", "/wp-includes", "/files", "/fileserver",
+           "/downloadserver", "/download", "/stats", "/imunify-antivirus", "/_archiv-alt",
+           "/app/storage/uploads", "/.tmb", "/bt", "/caldav", "/coupon", "/fb", "/intranet",
+           "/mailoffer", "/music", "/new", "/release", "/shop", "/stream", "/webmail",
+           "/webmailnew", "/webshop"}
 
 
 def server_tree(ftp, deep_uploads=False):
