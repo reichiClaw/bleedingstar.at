@@ -39,13 +39,7 @@ php bin/install.php --import
 php bin/create-admin.php redaktion@example.com 'ein-langes-passwort'
 ```
 
-`--import` liest `data/content.json`, legt Künstler, Releases, Weiterleitungen und die drei bestätigten Mietgeräte an und lädt vorhandene Cover von `bleedingstar.at` nach `storage/uploads/`. Ein zweiter Lauf überschreibt keine Felder, die im Admin als redaktionell gesperrt wurden. News, Events, Radio und Downloads der alten Seite werden nicht übernommen; sie bleiben nur im Export erhalten. Datenbanken, die vor dieser Änderung eingerichtet wurden, haben die Tabellen `news`, `events` und `documents` sowie die Seite `radio` noch; sie werden von nichts mehr gelesen und können entfernt werden:
-
-```sql
-DROP TABLE IF EXISTS news, events, documents;
-DELETE FROM pages WHERE slug = 'radio';
-DELETE FROM redirects WHERE target_path LIKE '/news/%';
-```
+`--import` liest `data/content.json`, legt Künstler, Releases, Weiterleitungen und die drei bestätigten Mietgeräte an und lädt vorhandene Cover von `bleedingstar.at` nach `storage/uploads/`. Ein zweiter Lauf überschreibt keine Felder, die im Admin als redaktionell gesperrt wurden. News, Events, Radio und Downloads der alten Seite werden nicht übernommen; sie bleiben nur im Export erhalten. Datenbanken, die vor dieser Änderung eingerichtet wurden, haben die Tabelle `news` und die Seite `radio` noch; `php bin/remove-legacy-content.php` (oder `/jobs/run?token=…&task=remove-legacy-content`, `--dry-run` bzw. `&dry=1` zählt nur) entfernt beides samt der Weiterleitungen nach `/news/…` und `/radio`. Der Lauf ist wiederholbar und steht wie die Importe in `sync_runs`. Die ebenfalls ungenutzten Tabellen `events` und `documents` bleiben; wer sie loswerden will: `DROP TABLE IF EXISTS events, documents;`
 
 5. Schreibrechte für den Webserver-Benutzer:
 
@@ -192,7 +186,7 @@ https://www.bleedingstar.at/jobs/run?token=…
 
 Ein Web-Cronjob alle vier Stunden reicht. Wer die Quellen lieber getrennt plant, hängt `&source=discogs|deezer|apple|cache` an; dann erledigt ein Aufruf nur diese Quelle.
 
-Die Antwort ist eine Textzeile wie in der CLI (`sync-releases run created=… updated=… reviews=…`), Status 200; 409, wenn ein anderer Lauf die Sperre hält; 500 bei einem Fehler. `&dry=1` zählt nur. Jeder Lauf steht wie die CLI-Läufe in `sync_runs` und im Admin.
+Die Antwort ist eine Textzeile wie in der CLI (`sync-releases run created=… updated=… reviews=…`), Status 200; 409, wenn ein anderer Lauf die Sperre hält; 500 bei einem Fehler. `&dry=1` zählt nur. Jeder Lauf steht wie die CLI-Läufe in `sync_runs` und im Admin. `&task=remove-legacy-content` führt statt des Imports die einmalige Bereinigung der alten News- und Radio-Inhalte aus (siehe Installation); andere Werte für `task` antworten mit 404.
 
 Zeitbudget: Jede Quelle hört von sich aus auf, neue Einträge anzufassen, sobald `max_execution_time` minus 30 Sekunden erreicht ist (`job_time_budget` in `config.php` überschreibt das; `0` hebt es auf, im Shell-Cron ohne Limit gibt es keines). Die Meldung lautet dann `time budget reached, next run continues`; der nächste Lauf geht die Liste erneut durch, bereits bekannte Einträge sind schnell. Speicher: Cover werden einzeln geladen und verkleinert, 512 M reichen weit.
 

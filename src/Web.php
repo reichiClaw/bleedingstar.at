@@ -445,12 +445,19 @@ final class Web
             $source = null;
         }
         $dry = isset($_GET['dry']) || isset($_POST['dry']);
+        $task = $_POST['task'] ?? $_GET['task'] ?? 'sync-releases';
+        if (!in_array($task, ['sync-releases', 'remove-legacy-content'], true)) {
+            $this->notFound();
+            return;
+        }
         ignore_user_abort(true);
         header('Content-Type: text/plain; charset=utf-8');
         header('Cache-Control: no-store');
         header('X-Robots-Tag: noindex, nofollow');
         $runner = new JobRunner(app_db(), app_root());
-        $result = $runner->run('sync-releases', $dry, fn () => $runner->syncReleases($this->config, $dry, $source));
+        $result = $task === 'remove-legacy-content'
+            ? $runner->run($task, $dry, fn () => (new Installer(app_db(), app_root()))->removeLegacyContent($dry))
+            : $runner->run($task, $dry, fn () => $runner->syncReleases($this->config, $dry, $source));
         http_response_code(match ($result['status']) {
             'ok', 'quota' => 200,
             'locked' => 409,

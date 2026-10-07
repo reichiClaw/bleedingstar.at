@@ -65,6 +65,48 @@ final class Installer
         return 'created';
     }
 
+    /**
+     * Removes the News and Radio content of the old site from the database: the news
+     * table (no longer in the schema), the page 'radio' and the redirects that still
+     * pointed to /news/… or /radio. The content stays archived in data/content.json.
+     * Idempotent; returns the usual job stats with the counts in the message.
+     */
+    public function removeLegacyContent(bool $dry = false): array
+    {
+        $pdo = $this->db->pdo();
+        $parts = [];
+        $removed = 0;
+
+        $hasNews = $pdo->query("SHOW TABLES LIKE 'news'")->fetch() !== false;
+        if ($hasNews) {
+            $count = (int) ($this->db->one('SELECT COUNT(*) AS c FROM news')['c'] ?? 0);
+            if (!$dry) {
+                $pdo->exec('DROP TABLE news');
+            }
+            $parts[] = sprintf('news: %d Beiträge, Tabelle %s', $count, $dry ? 'würde entfernt' : 'entfernt');
+            $removed += $count;
+        } else {
+            $parts[] = 'news: Tabelle bereits entfernt';
+        }
+
+        $radio = (int) ($this->db->one("SELECT COUNT(*) AS c FROM pages WHERE slug = 'radio'")['c'] ?? 0);
+        if ($radio > 0 && !$dry) {
+            $this->db->exec("DELETE FROM pages WHERE slug = 'radio'");
+        }
+        $parts[] = 'radio: ' . ($radio > 0 ? ($dry ? 'Seite würde entfernt' : 'Seite entfernt') : 'bereits entfernt');
+        $removed += $radio;
+
+        $redirectSql = "FROM redirects WHERE target_path LIKE '/news/%' OR target_path LIKE '/radio%' OR target_path = '/news'";
+        $redirects = (int) ($this->db->one('SELECT COUNT(*) AS c ' . $redirectSql)['c'] ?? 0);
+        if ($redirects > 0 && !$dry) {
+            $this->db->exec('DELETE ' . $redirectSql);
+        }
+        $parts[] = sprintf('redirects: %d %s', $redirects, $dry ? 'würden entfernt' : 'entfernt');
+        $removed += $redirects;
+
+        return ['created' => 0, 'updated' => $removed, 'reviews' => 0, 'errors' => 0, 'skipped' => 0, 'message' => implode(' | ', $parts)];
+    }
+
     public function finish(): void
     {
         $dir = dirname($this->marker());
