@@ -13,3 +13,4 @@
 .DS_Store
 /storage/install.done
 .deploy-ftp-cache.json
+__pycache__/
