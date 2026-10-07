@@ -44,7 +44,6 @@ class Client
             $raw = curl_exec($ch);
             if ($raw === false) {
                 $err = curl_error($ch);
-                curl_close($ch);
                 if ($attempt < 3) {
                     sleep($attempt);
                     continue;
@@ -53,7 +52,6 @@ class Client
             }
             $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
             $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-            curl_close($ch);
             $header = substr($raw, 0, $headerSize);
             $body = substr($raw, $headerSize);
             if ($status === 429 || $status >= 500) {

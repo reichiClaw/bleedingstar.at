@@ -6,7 +6,7 @@ PHP rendert die Seiten. Es gibt kein Laravel, Symfony, WordPress, React oder Vue
 
 ## Mindestumgebung
 
-- PHP **8.2** oder neuer. Entwickelt und geprüft mit PHP 8.3.6. Keine Syntax, die nur in 8.3 existiert.
+- PHP **8.2** oder neuer. Entwickelt mit PHP 8.3.6, zusätzlich mit PHP 8.5.11 geprüft (Tests, alle Seiten, Admin, Jobs: keine Deprecation-Meldungen). Keine Syntax, die nur in 8.3 oder neuer existiert.
 - Erweiterungen: `pdo_mysql`, `mbstring`, `curl`, `gd`, `json`, `fileinfo`
 - MySQL 8 oder MariaDB 10.6+ mit `utf8mb4`
 - Apache mit `mod_rewrite` oder nginx mit einer Weiterleitung auf `public/index.php`

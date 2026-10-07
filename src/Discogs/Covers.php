@@ -90,7 +90,6 @@ final class Covers
         ]);
         $raw = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        curl_close($ch);
         if ($raw === false || $status >= 400 || $raw === '') {
             return null;
         }
@@ -115,8 +114,6 @@ final class Covers
         ob_start();
         imagejpeg($dst, null, 82);
         $out = ob_get_clean();
-        imagedestroy($src);
-        imagedestroy($dst);
         return is_string($out) && $out !== '' ? $out : null;
     }
 }

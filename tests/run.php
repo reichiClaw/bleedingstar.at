@@ -141,7 +141,6 @@ imagefilledrectangle($img, 0, 0, 899, 399, imagecolorallocate($img, 200, 20, 40)
 ob_start();
 imagepng($img);
 $png = (string) ob_get_clean();
-imagedestroy($img);
 $coverDir = sys_get_temp_dir() . '/bs-cover-test-' . bin2hex(random_bytes(3));
 $saved = (new App\Discogs\Covers($coverDir, 'test'))->fromBytes('42', $png);
 $gridInfo = $saved ? @getimagesize($coverDir . '/storage/uploads/' . $saved['grid']) : false;
