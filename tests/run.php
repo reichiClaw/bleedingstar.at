@@ -470,18 +470,31 @@ if ($installer->installed()) {
 // --- Legacy content removal (news table, radio page, news redirects) --------
 $db->exec('CREATE TABLE IF NOT EXISTS news (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, title VARCHAR(200) NOT NULL)');
 $db->exec("INSERT INTO news (title) VALUES ('alt 1'), ('alt 2')");
+$db->exec('CREATE TABLE IF NOT EXISTS events (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, title VARCHAR(200) NOT NULL)');
+$db->exec("INSERT INTO events (title) VALUES ('gig')");
+$db->exec('CREATE TABLE IF NOT EXISTS documents (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, title VARCHAR(200) NOT NULL)');
+$db->exec("INSERT INTO documents (title) VALUES ('rider'), ('logo'), ('presse')");
 $db->exec("INSERT INTO pages (slug, title, body_html, updated_at) VALUES ('radio', 'Radio', '<p>alt</p>', NOW()) ON DUPLICATE KEY UPDATE title = VALUES(title)");
-$db->exec("INSERT INTO redirects (source_path, target_path) VALUES ('/test-legacy-news', '/news/alt-1'), ('/test-legacy-radio', '/radio') ON DUPLICATE KEY UPDATE target_path = VALUES(target_path)");
+$db->exec("INSERT INTO redirects (source_path, target_path) VALUES ('/test-legacy-news', '/news/alt-1'), ('/test-legacy-radio', '/radio'), ('/test-legacy-events', '/events'), ('/test-legacy-downloads', '/downloads') ON DUPLICATE KEY UPDATE target_path = VALUES(target_path)");
 $db->exec("INSERT INTO redirects (source_path, target_path) VALUES ('/test-legacy-keep', '/releases') ON DUPLICATE KEY UPDATE target_path = VALUES(target_path)");
 $dryStats = $installer->removeLegacyContent(true);
 check($dryStats['errors'] === 0 && str_contains($dryStats['message'], 'news: 2 Beiträge, Tabelle würde entfernt'), 'dry run counts the news posts');
 check($db->pdo()->query("SHOW TABLES LIKE 'news'")->fetch() !== false, 'dry run keeps the news table');
 check($db->one("SELECT 1 FROM pages WHERE slug = 'radio'") !== null, 'dry run keeps the radio page');
 $realStats = $installer->removeLegacyContent(false);
-check($realStats['errors'] === 0 && str_contains($realStats['message'], 'news: 2 Beiträge, Tabelle entfernt') && str_contains($realStats['message'], 'radio: Seite entfernt'), 'real run reports the removal: ' . $realStats['message']);
+check(
+    $realStats['errors'] === 0
+    && str_contains($realStats['message'], 'news: 2 Beiträge, Tabelle entfernt')
+    && str_contains($realStats['message'], 'events: 1 Termine, Tabelle entfernt')
+    && str_contains($realStats['message'], 'documents: 3 Dateien, Tabelle entfernt')
+    && str_contains($realStats['message'], 'radio: Seite entfernt')
+    && str_contains($realStats['message'], 'redirects: 4 entfernt'),
+    'real run reports the removal: ' . $realStats['message']
+);
 check($db->pdo()->query("SHOW TABLES LIKE 'news'")->fetch() === false, 'news table is dropped');
+check($db->pdo()->query("SHOW TABLES LIKE 'events'")->fetch() === false && $db->pdo()->query("SHOW TABLES LIKE 'documents'")->fetch() === false, 'events and documents tables are dropped');
 check($db->one("SELECT 1 FROM pages WHERE slug = 'radio'") === null, 'radio page is deleted');
-check($db->one("SELECT 1 FROM redirects WHERE source_path IN ('/test-legacy-news', '/test-legacy-radio')") === null, 'news and radio redirects are deleted');
+check($db->one("SELECT 1 FROM redirects WHERE source_path IN ('/test-legacy-news', '/test-legacy-radio', '/test-legacy-events', '/test-legacy-downloads')") === null, 'news, radio, events and downloads redirects are deleted');
 check($db->one("SELECT 1 FROM redirects WHERE source_path = '/test-legacy-keep'") !== null, 'other redirects survive');
 $againStats = $installer->removeLegacyContent(false);
 check($againStats['errors'] === 0 && $againStats['updated'] === 0 && str_contains($againStats['message'], 'bereits entfernt'), 'second run is a no-op');

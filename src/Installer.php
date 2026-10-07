@@ -66,10 +66,11 @@ final class Installer
     }
 
     /**
-     * Removes the News and Radio content of the old site from the database: the news
-     * table (no longer in the schema), the page 'radio' and the redirects that still
-     * pointed to /news/… or /radio. The content stays archived in data/content.json.
-     * Idempotent; returns the usual job stats with the counts in the message.
+     * Removes the content of the old site that the new one does not carry: the tables
+     * news, events and documents (no longer in the schema), the page 'radio' and the
+     * redirects that still pointed to /news/…, /events, /radio or /downloads. The content
+     * stays archived in data/content.json. Idempotent; returns the usual job stats with
+     * the counts in the message.
      */
     public function removeLegacyContent(bool $dry = false): array
     {
@@ -77,16 +78,18 @@ final class Installer
         $parts = [];
         $removed = 0;
 
-        $hasNews = $pdo->query("SHOW TABLES LIKE 'news'")->fetch() !== false;
-        if ($hasNews) {
-            $count = (int) ($this->db->one('SELECT COUNT(*) AS c FROM news')['c'] ?? 0);
-            if (!$dry) {
-                $pdo->exec('DROP TABLE news');
+        foreach (['news' => 'Beiträge', 'events' => 'Termine', 'documents' => 'Dateien'] as $table => $noun) {
+            $exists = $pdo->query("SHOW TABLES LIKE '$table'")->fetch() !== false;
+            if (!$exists) {
+                $parts[] = $table . ': Tabelle bereits entfernt';
+                continue;
             }
-            $parts[] = sprintf('news: %d Beiträge, Tabelle %s', $count, $dry ? 'würde entfernt' : 'entfernt');
+            $count = (int) ($this->db->one("SELECT COUNT(*) AS c FROM `$table`")['c'] ?? 0);
+            if (!$dry) {
+                $pdo->exec("DROP TABLE `$table`");
+            }
+            $parts[] = sprintf('%s: %d %s, Tabelle %s', $table, $count, $noun, $dry ? 'würde entfernt' : 'entfernt');
             $removed += $count;
-        } else {
-            $parts[] = 'news: Tabelle bereits entfernt';
         }
 
         $radio = (int) ($this->db->one("SELECT COUNT(*) AS c FROM pages WHERE slug = 'radio'")['c'] ?? 0);
@@ -96,7 +99,8 @@ final class Installer
         $parts[] = 'radio: ' . ($radio > 0 ? ($dry ? 'Seite würde entfernt' : 'Seite entfernt') : 'bereits entfernt');
         $removed += $radio;
 
-        $redirectSql = "FROM redirects WHERE target_path LIKE '/news/%' OR target_path LIKE '/radio%' OR target_path = '/news'";
+        $redirectSql = "FROM redirects WHERE target_path LIKE '/news/%' OR target_path LIKE '/events/%' OR target_path LIKE '/downloads/%'"
+            . " OR target_path IN ('/news', '/events', '/radio', '/downloads')";
         $redirects = (int) ($this->db->one('SELECT COUNT(*) AS c ' . $redirectSql)['c'] ?? 0);
         if ($redirects > 0 && !$dry) {
             $this->db->exec('DELETE ' . $redirectSql);
