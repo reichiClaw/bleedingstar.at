@@ -12,6 +12,12 @@ return [
     // Optional: at least 32 random characters open /setup?token=... once, until storage/install.done exists.
     // Only needed on hosting without shell access; leave empty otherwise.
     'setup_token' => '',
+    // Optional: at least 32 random characters let a web cron call /jobs/run?token=...&source=discogs|deezer|apple.
+    // Leave empty when the catalogue jobs run from a shell cron instead.
+    'cron_token' => '',
+    // Optional: seconds a catalogue run may take before it stops cleanly (0 = unlimited).
+    // Default: max_execution_time minus 30 s, which fits the 180 s limit of World4You web and cron requests.
+    // 'job_time_budget' => 150,
     'db' => [
         'dsn' => 'mysql:host=127.0.0.1;dbname=bleedingstar;charset=utf8mb4',
         'user' => 'bleedingstar',
@@ -37,6 +43,17 @@ return [
         'allow_label_ids' => [316841],
         'allow_label_names' => ['BleedingStar Records'],
         'max_age_hours' => 4,
+        'timeout' => 20,
+    ],
+    // Deezer and Apple need no credentials. Both default to the Discogs label names and user agent.
+    'deezer' => [
+        'enabled' => true,
+        'label_names' => ['BleedingStar Records'],
+        'timeout' => 20,
+    ],
+    'apple' => [
+        'enabled' => true,
+        'country' => 'at',
         'timeout' => 20,
     ],
     'spotify' => [

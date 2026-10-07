@@ -91,7 +91,7 @@ Voraussetzungen, die nur im World4You-Kundenbereich erledigt werden können:
 
 1. **PHP auf 8.2 oder neuer stellen.** Der Server liefert standardmäßig PHP 7.3. `AddHandler` in `.htaccess` funktioniert dort nicht (PHP würde als Text ausgeliefert). Bis zur Umstellung zeigt `index.php` eine Wartungsseite mit Status 503.
 2. **Neue MySQL-Datenbank anlegen** (utf8mb4). Die alte WordPress-Datenbank ist MySQL 5.1 und ungeeignet. Zugangsdaten gehören in `/app/config/config.php`.
-3. **Cron**: `php /home/.sites/288/site940/web/app/bin/sync-releases.php` alle vier Stunden.
+3. **Cron**: entweder `php /home/.sites/288/site940/web/app/bin/sync-releases.php` alle vier Stunden oder, wenn der Cron nur Adressen aufrufen kann, die drei `/jobs/run`-Adressen aus dem Abschnitt „Cron per URL“ (`cron_token` in `config.php` nötig).
 
 Ersteinrichtung ohne Shell: In `config.php` ein `setup_token` mit mindestens 32 zufälligen Zeichen eintragen, dann `https://www.bleedingstar.at/setup?token=…` aufrufen. Die Seite legt die Tabellen an, spielt auf Wunsch `data/content.json` ein und erstellt den Admin-Zugang. Danach entsteht `storage/install.done` und die Seite ist abgeschaltet; der Token kann aus der Config entfernt werden. Solange `install.done` fehlt, antworten alle anderen Adressen mit 503.
 
@@ -120,7 +120,23 @@ Ein unvollständiges Datum bleibt unvollständig. Ein bekanntes Jahr wird nicht 
 
 Der Katalog behauptet keine Vollständigkeit. Er ist das bisherige Archiv plus das, was ein späterer Import nach Prüfung übernimmt.
 
-## Discogs und eigene Daten
+## Quellen: Discogs, Deezer, Apple Music und eigene Daten
+
+`php bin/sync-releases.php` geht in einem Lauf alle Quellen durch: Discogs, dann Deezer, dann die Apple-Music-Verknüpfung. Jede Quelle hat ihre eigene Fehlerbehandlung; `--source=discogs|deezer|apple` beschränkt den Lauf auf eine. Für alle gilt: nur Releases mit dem Label aus der Allow-Liste, UPC verknüpft ein vorhandenes Release, gleicher Künstler und Titel landet in `import_reviews` und wird im Admin bestätigt, redaktionell gesperrte Felder bleiben unangetastet, es wird nie gelöscht.
+
+### Deezer
+
+Deezer führt jede digital vertriebene Veröffentlichung mit Labelname, UPC, exaktem Datum, Typ (Single, EP, Album), Tracks mit ISRC und einem großen Cover. Die öffentliche API braucht keine Zugangsdaten; der Adapter hält etwa sieben Anfragen pro Sekunde ein. Gesucht wird `label:"BleedingStar Records"` (`deezer.label_names`, Standard sind die Discogs-Labelnamen); jedes Album wird einzeln geladen und nur übernommen, wenn das Feld `label` exakt passt.
+
+Ein per UPC oder Prüffall verknüpftes Release bekommt, was ihm fehlt: das genaue Datum, wenn bisher nur das Jahr bekannt war (und das Jahr übereinstimmt), den Typ, die Tracks samt ISRC, das Format „Digital“ mit UPC, den Deezer-Link und ein Cover nur dann, wenn noch keines da ist. Beim Titelvergleich werden Klammerzusätze und Endungen wie „EP“, „Single“ oder „Radio Edit“ ignoriert, ein führendes „The“ beim Künstler ebenfalls, das führt aber nur zum Prüffall, nie zur automatischen Zusammenführung. Zwei Deezer-Alben sind nie dasselbe Release.
+
+Cover landen unter `storage/uploads/covers/deezer/` (die CDN liefert bei Anfrage von 1800 px die größte vorhandene Datei, meist 1200 oder 1400 px), kleinere Rasterdateien entstehen wie bei Discogs. Genres aus Deezer erscheinen auf der Release-Seite.
+
+### Apple Music
+
+Für jedes Release mit UPC, das noch keinen Apple-Link hat, fragt der Lauf die iTunes-Lookup-API (`country=at`, ohne Zugangsdaten, höchstens 40 Abfragen pro Lauf im Abstand von gut drei Sekunden) und speichert den Link zur Album-Seite. Die Antwort liegt in `provider_records` (`apple`, `upc`); ein UPC ohne Treffer wird frühestens nach 30 Tagen erneut gefragt.
+
+### Discogs
 
 Der Adapter spricht nur `https://api.discogs.com` an. Die Label-ID ist **316841**. Ein Release wird nur übernommen, wenn ein Label aus `allow_label_ids` oder `allow_label_names` daran hängt. Gleicher Titel allein führt nicht zusammen. Dieselbe normalisierte Kombination aus Künstler und Titel landet in `import_reviews`. Eine UPC kann ein vorhandenes Release verknüpfen. Mehrere Discogs-Ausgaben mit derselben Master-ID werden eine Kachel plus Zeilen in `release_formats`.
 
@@ -136,7 +152,7 @@ Exit-Codes: `0` in Ordnung, `1` Fehler, `2` anderer Lauf hält die Sperre, `3` K
 
 Ein einzelner unauthentifizierter Abruf von `/labels/316841/releases?per_page=1&page=1` am 7. Oktober 2026 antwortete mit `pagination.items = 18`. Ein vollständiger Live-Import wurde nicht ausgeführt. Der sichtbare Katalog ist der Archivimport.
 
-Spotify ist in der Beispielkonfiguration aus. Manuell gesetzte Spotify-Links funktionieren ohne API. Der Player wird erst nach „Player laden“ eingebettet, nicht über dem Cover.
+Spotify ist in der Beispielkonfiguration aus; die Spotify-API verlangt eine registrierte App mit Client-ID und Secret und ist deshalb nicht angebunden. Manuell gesetzte Spotify-Links funktionieren ohne API. Der Player wird erst nach „Player laden“ eingebettet, nicht über dem Cover.
 
 Eigene Releases, die in öffentlichen Datenbanken fehlen:
 
@@ -146,7 +162,7 @@ php bin/import-csv.php database/fixtures/own-releases.example.csv
 
 Spalten: `title,artist,year,month,day,type,upc,spotify_url`. Derselbe Lauf legt keine zweite Zeile an, wenn UPC oder die Kombination aus Titel und erstem Künstler schon existiert. Auch das ist kein Vollständigkeitsbeleg.
 
-MusicBrainz ist nicht angebunden.
+MusicBrainz kennt das Label (`4bce058d-84a7-4511-91a3-385eb34a15ff`), führt aber nur fünf Releases, die alle auch bei Deezer stehen; es ist nicht angebunden.
 
 ## Cron
 
@@ -158,7 +174,21 @@ CRON_TZ=Europe/Vienna
 20 */4 * * * /usr/bin/php /var/www/bleedingstar/bin/refresh-provider-cache.php >> /var/www/bleedingstar/storage/logs/provider-cache.log 2>&1
 ```
 
-Pfade und das PHP-Binary an den Host anpassen. Der Web-Button im Admin schreibt nur `storage/jobs/sync.request`. Der nächste CLI-Lauf von `bin/sync-releases.php` entfernt die Datei und arbeitet den Import ab. Ein Webrequest startet den Import nicht.
+Pfade und das PHP-Binary an den Host anpassen. Der Web-Button im Admin schreibt nur `storage/jobs/sync.request`. Der nächste Lauf von `bin/sync-releases.php` (oder von `/jobs/run`) entfernt die Datei und arbeitet den Import ab. Ein normaler Webrequest startet den Import nicht.
+
+### Cron per URL
+
+Hosting ohne Shell (World4You „Web-Cronjobs“) kann nur Adressen aufrufen. Dafür gibt es `/jobs/run`, abgesichert mit `cron_token` in `config.php` (mindestens 32 zufällige Zeichen; `php -r 'echo bin2hex(random_bytes(24));'`). Ohne oder mit falschem Token antwortet die Adresse mit 404. Ein Aufruf erledigt eine Quelle, damit er innerhalb der Laufzeitgrenze bleibt (bei World4You gelten für Web- und Cron-Aufrufe `max_execution_time` 180 s und `memory_limit` 512 M):
+
+```text
+https://www.bleedingstar.at/jobs/run?token=…&source=discogs
+https://www.bleedingstar.at/jobs/run?token=…&source=deezer
+https://www.bleedingstar.at/jobs/run?token=…&source=apple
+```
+
+Die Antwort ist eine Textzeile wie in der CLI (`sync-releases run created=… updated=… reviews=…`), Status 200; 409, wenn ein anderer Lauf die Sperre hält; 500 bei einem Fehler. `&dry=1` zählt nur. Jeder Lauf steht wie die CLI-Läufe in `sync_runs` und im Admin. Sinnvoll ist ein Aufruf je Quelle alle vier Stunden, zeitlich versetzt.
+
+Zeitbudget: Jede Quelle hört von sich aus auf, neue Einträge anzufassen, sobald `max_execution_time` minus 30 Sekunden erreicht ist (`job_time_budget` in `config.php` überschreibt das; `0` hebt es auf, im Shell-Cron ohne Limit gibt es keines). Die Meldung lautet dann `time budget reached, next run continues`; der nächste Lauf geht die Liste erneut durch, bereits bekannte Einträge sind schnell. Speicher: Cover werden einzeln geladen und verkleinert, 512 M reichen weit.
 
 ## Admin
 

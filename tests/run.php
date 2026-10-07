@@ -148,7 +148,10 @@ check($saved !== null && is_file($coverDir . '/storage/uploads/' . $saved['full'
 
 $bioBefore = $db->one('SELECT bio_html FROM artists WHERE slug="supervision"');
 $db->exec('UPDATE artists SET bio_html=?, editorial_locked=1 WHERE slug="supervision"', ['<p>LOCKED-BIO</p>']);
+$linksBefore = (int) $db->one('SELECT COUNT(*) AS c FROM release_links l JOIN releases r ON r.id = l.release_id WHERE r.slug = "on-the-road-to-calipo-island"')['c'];
 (new LegacyImporter($db, app_root()))->import(app_config()['legacy_export']);
+$linksAfter = (int) $db->one('SELECT COUNT(*) AS c FROM release_links l JOIN releases r ON r.id = l.release_id WHERE r.slug = "on-the-road-to-calipo-island"')['c'];
+check($linksBefore > 0 && $linksAfter === $linksBefore, 'reimport does not duplicate release links');
 $locked = $db->one('SELECT bio_html, editorial_locked FROM artists WHERE slug="supervision"');
 check($locked['bio_html'] === '<p>LOCKED-BIO</p>' && (int) $locked['editorial_locked'] === 1, 'manual artist text survives reimport');
 $db->exec('UPDATE artists SET bio_html=?, editorial_locked=0 WHERE slug="supervision"', [$bioBefore['bio_html']]);
@@ -259,17 +262,113 @@ check($csvCode === 0 && $csvCode2 === 0 && $csvRows === 1, 'CSV import is repeat
 $csvRelease = $db->one('SELECT release_day, release_date_precision FROM releases WHERE title=?', [$marker . ' CSV']);
 check($csvRelease['release_day'] === null && $csvRelease['release_date_precision'] === 'year', 'CSV year does not invent a day');
 
+// --- Deezer source -----------------------------------------------------------
+final class FixtureDeezer extends App\Deezer\Client
+{
+    public function __construct(private array $map)
+    {
+        parent::__construct(['timeout' => 1]);
+    }
+
+    public function get(string $path): array
+    {
+        if (!isset($this->map[$path])) {
+            throw new DiscogsException('missing Deezer fixture ' . $path, 800, false);
+        }
+        return $this->map[$path];
+    }
+}
+
+$dzLegacyId = $db->insert(
+    'INSERT INTO releases (slug, title, status, source, release_year, release_date_precision, created_at, updated_at) VALUES (?,?,"published","legacy",2020,"year",NOW(),NOW())',
+    [slugify($marker . ' dz legacy'), $marker . ' Deezer Shared']
+);
+$dzBandId = $db->insert(
+    'INSERT INTO artists (slug, name, status, image_source, created_at, updated_at) VALUES (?,?,"published","legacy",NOW(),NOW())',
+    [slugify($marker . ' band'), 'The ' . $marker . ' Band']
+);
+$db->exec('INSERT INTO release_artists (release_id, artist_id, position) VALUES (?,?,0)', [$dzLegacyId, $dzBandId]);
+
+$dzAlbum = static function (int $id, string $title, string $artist, int $artistId, string $label, ?string $upc, string $type = 'single'): array {
+    return [
+        'id' => $id,
+        'title' => $title,
+        'upc' => $upc,
+        'link' => 'https://www.deezer.com/album/' . $id,
+        'cover_xl' => 'https://cdn-images.dzcdn.test/images/cover/abc/1000x1000-000000-80-0-0.jpg',
+        'genres' => ['data' => [['id' => 152, 'name' => 'Rock']]],
+        'label' => $label,
+        'release_date' => '2020-05-06',
+        'record_type' => $type,
+        'artist' => ['id' => $artistId, 'name' => $artist],
+        'contributors' => [['id' => $artistId, 'name' => $artist, 'role' => 'Main']],
+    ];
+};
+$dzTracks = ['data' => [
+    ['title' => 'Song One', 'duration' => 190, 'isrc' => 'ATTEST2000001', 'track_position' => 1, 'disk_number' => 1],
+    ['title' => 'Song Two', 'duration' => 65, 'isrc' => 'ATTEST2000002', 'track_position' => 2, 'disk_number' => 1],
+]];
+$dzSearch = '/search/album?limit=100&q=' . rawurlencode('label:"BleedingStar Records"');
+$dzClient = new FixtureDeezer([
+    $dzSearch => ['data' => [['id' => 7001], ['id' => 7002], ['id' => 7003], ['id' => 7004]], 'total' => 4],
+    '/album/7001' => $dzAlbum(7001, $marker . ' Deezer Shared (Radio Edit)', $marker . ' Band', 66001, 'BleedingStar Records', '000DZUPC1'),
+    '/album/7001/tracks' => $dzTracks,
+    '/album/7002' => $dzAlbum(7002, $marker . ' Deezer Fresh', $marker . ' Newcomer', 66002, 'BleedingStar Records', '000DZUPC2', 'ep'),
+    '/album/7002/tracks' => $dzTracks,
+    '/album/7003' => $dzAlbum(7003, $marker . ' Foreign', $marker . ' Stranger', 66003, 'Some Other Label', '000DZUPC3'),
+    '/album/7003/tracks' => $dzTracks,
+    '/album/7004' => $dzAlbum(7004, $marker . ' UPC Hit', $marker . ' Nobody', 66004, 'BleedingStar Records', '000TESTUPC'),
+    '/album/7004/tracks' => $dzTracks,
+]);
+$dzConfig = ['label_names' => ['BleedingStar Records'], 'user_agent' => 'test'];
+$dz = new App\Deezer\Sync($db, $dzClient, $dzConfig);
+$dzStats = $dz->importLabel(false);
+check($dzStats['skipped'] === 1, 'Deezer album of another label is skipped');
+check($dzStats['created'] === 1, 'Deezer creates only the unknown release');
+check($dzStats['updated'] === 1, 'Deezer UPC match links the existing release');
+check($dzStats['reviews'] === 1, 'Deezer same artist and similar title becomes a review');
+$dzFresh = $db->one('SELECT * FROM releases WHERE title = ?', [$marker . ' Deezer Fresh']);
+check($dzFresh !== null && $dzFresh['release_date_precision'] === 'day' && (int) $dzFresh['release_day'] === 6 && $dzFresh['release_type'] === 'ep', 'Deezer release carries exact date and type');
+$dzTrackRows = $db->all('SELECT title, duration, isrc FROM tracks WHERE release_id = ? ORDER BY position', [$dzFresh['id'] ?? 0]);
+check(count($dzTrackRows) === 2 && $dzTrackRows[0]['duration'] === '3:10' && $dzTrackRows[1]['duration'] === '1:05' && $dzTrackRows[0]['isrc'] === 'ATTEST2000001', 'Deezer tracks keep duration and ISRC');
+check($db->one('SELECT id FROM release_formats WHERE release_id = ? AND upc = "000DZUPC2"', [$dzFresh['id'] ?? 0]) !== null, 'Deezer UPC is stored as digital format');
+check($db->one("SELECT id FROM release_links WHERE release_id = ? AND provider = 'deezer'", [$dzFresh['id'] ?? 0]) !== null, 'Deezer link is stored');
+check($db->one("SELECT id FROM external_ids WHERE provider='deezer' AND entity_type='release' AND entity_id=?", [$legacyId]) !== null, 'UPC match remembers the Deezer id on the existing release');
+check((int) $db->one('SELECT COUNT(*) AS c FROM releases WHERE title LIKE ?', [$marker . ' Deezer Shared%'])['c'] === 1, 'review did not create a duplicate');
+check((int) $db->one('SELECT COUNT(*) AS c FROM artists WHERE name LIKE ?', ['%' . $marker . ' Band'])['c'] === 1, 'artist with and without "The" is the same artist');
+$dzReview = $db->one("SELECT id FROM import_reviews WHERE provider='deezer' AND external_id='7001' AND status='open'");
+check($dzReview !== null && $dz->mergeReview((int) $dzReview['id']) === true, 'Deezer review can be merged');
+$dzMerged = $db->one('SELECT release_year, release_month, release_day, release_date_precision FROM releases WHERE id = ?', [$dzLegacyId]);
+check($dzMerged['release_date_precision'] === 'day' && (int) $dzMerged['release_month'] === 5 && (int) $dzMerged['release_day'] === 6, 'merge upgrades a year-only date to the exact day');
+check((int) $db->one('SELECT COUNT(*) AS c FROM tracks WHERE release_id = ?', [$dzLegacyId])['c'] === 2, 'merge fills the empty tracklist');
+$dzAgain = $dz->importLabel(false);
+check($dzAgain['created'] === 0 && $dzAgain['reviews'] === 0 && $dzAgain['updated'] === 3, 'second Deezer run only refreshes the linked releases');
+$db->exec('UPDATE releases SET editorial_locked=1, release_date_precision="year", release_month=NULL, release_day=NULL WHERE id=?', [$dzLegacyId]);
+$dz->importLabel(false);
+$dzLocked = $db->one('SELECT release_date_precision FROM releases WHERE id = ?', [$dzLegacyId]);
+check($dzLocked['release_date_precision'] === 'year', 'editorial lock stops Deezer from changing the date');
+$dzExpired = $dz->importLabel(false, microtime(true) - 1);
+check($dzExpired['updated'] === 0 && str_contains($dzExpired['message'], 'time budget'), 'Deezer stops before the first album once the time budget is spent');
+$appleExpired = (new App\Apple\Links($db, ['user_agent' => 'test']))->run(true, 5, microtime(true) - 1);
+check($appleExpired['errors'] === 0 && $appleExpired['updated'] === 0, 'Apple lookup stops without network calls once the time budget is spent');
+check(App\JobRunner::deadline(['job_time_budget' => 0]) === null, 'job_time_budget 0 means no deadline');
+check(abs((App\JobRunner::deadline(['job_time_budget' => 150], 1000.0) ?? 0) - 1150.0) < 0.001, 'job_time_budget sets the deadline from the request start');
+check(App\JobRunner::deadline([], 1000.0) === ((int) ini_get('max_execution_time') > 0 ? 1000.0 + max(20, (int) ini_get('max_execution_time') - 30) : null), 'without config the deadline follows max_execution_time');
+$dzCovers = new App\Discogs\Covers(app_root(), 'test', 'deezer', ['dzcdn.net']);
+check($dzCovers->existing('7002') === null || is_file(app_root() . '/storage/uploads/' . $dzCovers->existing('7002')['full']), 'existing cover lookup only reports files on disk');
+check($dzCovers->existing('not-an-id') === null, 'existing cover lookup rejects non-numeric ids');
+
 $idsToDrop = $db->all(
-    'SELECT id FROM releases WHERE title LIKE ? OR id = ?',
-    [$marker . '%', $legacyId]
+    'SELECT id FROM releases WHERE title LIKE ? OR id = ? OR id = ?',
+    [$marker . '%', $legacyId, $dzLegacyId]
 );
 foreach ($idsToDrop as $row) {
     $db->exec('DELETE FROM releases WHERE id=?', [$row['id']]);
 }
-$db->exec("DELETE FROM external_ids WHERE external_id IN ('9001','9002','9003','9004','88001','88002','88003','88004','70001')");
-$db->exec("DELETE FROM provider_records WHERE external_id IN ('9001','9002','9003','9004')");
-$db->exec('DELETE FROM artists WHERE name LIKE ?', [$marker . '%']);
-$db->exec('DELETE FROM import_reviews WHERE external_id IN ("9001","9002","9003","9004")');
+$db->exec("DELETE FROM external_ids WHERE external_id IN ('9001','9002','9003','9004','88001','88002','88003','88004','70001','7001','7002','7003','7004','66001','66002','66003','66004')");
+$db->exec("DELETE FROM provider_records WHERE external_id IN ('9001','9002','9003','9004','7001','7002','7003','7004')");
+$db->exec('DELETE FROM artists WHERE name LIKE ? OR name LIKE ?', [$marker . '%', 'The ' . $marker . '%']);
+$db->exec('DELETE FROM import_reviews WHERE external_id IN ("9001","9002","9003","9004","7001","7002","7003","7004")');
 $left = (int) $db->one('SELECT COUNT(*) AS c FROM releases WHERE title LIKE ?', [$marker . '%'])['c'];
 check($left === 0, 'fixture releases removed');
 check((int) $db->one("SELECT COUNT(*) AS c FROM releases WHERE status='published'")['c'] === $publishedReleases, 'public catalog count restored');
