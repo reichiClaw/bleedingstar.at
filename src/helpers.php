@@ -130,6 +130,15 @@ function source_config(array $config, string $name): array
             'user_agent' => $discogs['user_agent'] ?? 'BleedingStarCatalog/1.0',
             'timeout' => 20,
         ],
+        'spotify' => [
+            'enabled' => false,
+            'client_id' => '',
+            'client_secret' => '',
+            'market' => 'AT',
+            'per_run' => 25,
+            'user_agent' => $discogs['user_agent'] ?? 'BleedingStarCatalog/1.0',
+            'timeout' => 20,
+        ],
     ];
     return array_replace($defaults[$name] ?? [], (array) ($config[$name] ?? []));
 }

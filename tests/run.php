@@ -45,6 +45,35 @@ final class FixtureDiscogs extends Client
     }
 }
 
+final class FixtureSpotify extends App\Spotify\Links
+{
+    public array $queries = [];
+
+    public function __construct(App\Database $db, private array $map)
+    {
+        parent::__construct($db, ['enabled' => true, 'client_id' => 'fixture-id', 'client_secret' => 'fixture-secret', 'market' => 'AT']);
+    }
+
+    protected function search(string $query, int $limit): array
+    {
+        $this->queries[] = $query;
+        return $this->map[$query] ?? [];
+    }
+}
+
+final class QuotaSpotify extends App\Spotify\Links
+{
+    public function __construct(App\Database $db)
+    {
+        parent::__construct($db, ['enabled' => true, 'client_id' => 'fixture-id', 'client_secret' => 'fixture-secret']);
+    }
+
+    protected function search(string $query, int $limit): array
+    {
+        throw new App\Spotify\SpotifyException('Spotify quota reached, next run continues', true);
+    }
+}
+
 $db = app_db();
 $catalog = new CatalogRepository($db, app_config());
 
@@ -422,6 +451,72 @@ $dzExpired = $dz->importLabel(false, microtime(true) - 1);
 check($dzExpired['updated'] === 0 && str_contains($dzExpired['message'], 'time budget'), 'Deezer stops before the first album once the time budget is spent');
 $appleExpired = (new App\Apple\Links($db, ['user_agent' => 'test']))->run(true, 5, microtime(true) - 1);
 check($appleExpired['errors'] === 0 && $appleExpired['updated'] === 0, 'Apple lookup stops without network calls once the time budget is spent');
+
+$spotifyOff = (new App\Spotify\Links($db, ['enabled' => true, 'client_id' => '', 'client_secret' => '']))->run(true, 1);
+check($spotifyOff['errors'] === 0 && $spotifyOff['updated'] === 0 && str_contains($spotifyOff['message'], 'not configured'), 'Spotify stays idle without credentials');
+$spotifyRunner = new App\JobRunner($db, app_root());
+check(!in_array('spotify', $spotifyRunner->enabledSources(app_config()), true), 'a full run skips Spotify while no credentials are configured');
+check(in_array('spotify', $spotifyRunner->enabledSources(['spotify' => ['enabled' => true, 'client_id' => 'id', 'client_secret' => 'secret']]), true), 'Spotify joins a full run once client id and secret are set');
+$db->exec(
+    "INSERT INTO provider_records (provider, entity_type, external_id, payload_json, fetched_at)
+     SELECT 'spotify', 'release', CAST(id AS CHAR), '{\"fixture\":\"shield\"}', NOW() FROM releases r
+     WHERE NOT EXISTS (SELECT 1 FROM provider_records p WHERE p.provider = 'spotify' AND p.entity_type = 'release' AND p.external_id = CAST(r.id AS CHAR))"
+);
+$spotifyArtist = $db->insert(
+    'INSERT INTO artists (slug, name, status, image_source, created_at, updated_at) VALUES (?, ?, "published", "legacy", NOW(), NOW())',
+    ['spotify-fixture-band', 'Jünger ' . 'Fixture']
+);
+$spotifyRelease = static function (string $slug, string $title) use ($db, $spotifyArtist): int {
+    $id = $db->insert(
+        'INSERT INTO releases (slug, title, status, source, created_at, updated_at) VALUES (?, ?, "published", "legacy", NOW(), NOW())',
+        [$slug, $title]
+    );
+    $db->exec('INSERT INTO release_artists (release_id, artist_id, position) VALUES (?, ?, 0)', [$id, $spotifyArtist]);
+    return $id;
+};
+$spotifyKept = $spotifyRelease('spotify-fixture-kept', 'Already Linked');
+$db->exec('INSERT INTO release_links (release_id, label, url, provider, manual) VALUES (?, "Spotify", "https://open.spotify.com/album/alreadykept01", "spotify", 1)', [$spotifyKept]);
+$spotifyUpc = $spotifyRelease('spotify-fixture-upc', 'Right Now');
+$db->exec('INSERT INTO release_formats (release_id, name, upc) VALUES (?, "Digital", "012345678905")', [$spotifyUpc]);
+$spotifyTitle = $spotifyRelease('spotify-fixture-title', 'High Tension');
+$spotifyAmbiguous = $spotifyRelease('spotify-fixture-ambiguous', 'Pandemia');
+$spotifyAlbum = static fn (string $id, string $name, string $artist): array => [
+    'name' => $name,
+    'external_urls' => ['spotify' => 'https://open.spotify.com/album/' . $id . '?si=tracking'],
+    'artists' => [['name' => $artist]],
+];
+$spotify = new FixtureSpotify($db, [
+    'upc:012345678905' => [$spotifyAlbum('upc0000000000000000001', 'Right Now', 'Someone Else')],
+    'album:"High Tension" artist:"Jünger Fixture"' => [$spotifyAlbum('title000000000000000001', 'High Tension (In Stereo)', 'Junger Fixture')],
+    'album:"Pandemia" artist:"Jünger Fixture"' => [
+        $spotifyAlbum('amb1000000000000000001', 'Pandemia', 'Jünger Fixture'),
+        $spotifyAlbum('amb2000000000000000002', 'Pandemia - Single', 'Junger Fixture'),
+    ],
+]);
+$spotifyStats = $spotify->run(false, 5);
+check($spotifyStats['errors'] === 0 && $spotifyStats['updated'] === 2 && $spotifyStats['skipped'] === 1, 'Spotify links the UPC hit and the single exact title, and skips two exact hits: ' . $spotifyStats['message']);
+$spotifyUpcUrl = $db->one('SELECT url FROM release_links WHERE release_id = ? AND provider = "spotify"', [$spotifyUpc]);
+$spotifyTitleUrl = $db->one('SELECT url FROM release_links WHERE release_id = ? AND provider = "spotify"', [$spotifyTitle]);
+check(($spotifyUpcUrl['url'] ?? '') === 'https://open.spotify.com/album/upc0000000000000000001', 'UPC match stores the album URL without the tracking query');
+check(($spotifyTitleUrl['url'] ?? '') === 'https://open.spotify.com/album/title000000000000000001', 'title match ignores a trailing bracket, accents and a Single suffix');
+check($db->one('SELECT id FROM release_links WHERE release_id = ? AND provider = "spotify" AND manual = 0', [$spotifyAmbiguous]) === null, 'two exact Spotify hits stay unmatched');
+check($db->one('SELECT id FROM release_links WHERE release_id = ? AND url LIKE "%alreadykept01"', [$spotifyKept]) !== null, 'an existing Spotify link is left alone');
+$spotifyQueries = $spotify->queries;
+$spotifyAgain = $spotify->run(false, 5);
+check($spotifyAgain['updated'] === 0 && $spotify->queries === $spotifyQueries, 'a second Spotify run does not look the same releases up again');
+check(count($spotifyQueries) === 3, 'the first run searched UPC, title and the ambiguous pair: ' . implode(' | ', $spotifyQueries));
+$db->exec('DELETE FROM provider_records WHERE provider = "spotify" AND entity_type = "release" AND external_id = ?', [(string) $spotifyAmbiguous]);
+$spotifyQuota = (new QuotaSpotify($db))->run(false, 1);
+check($spotifyQuota['errors'] === 1 && str_contains($spotifyQuota['message'], 'quota'), 'a Spotify quota stop ends the source without deleting links');
+check($db->one('SELECT id FROM release_links WHERE release_id = ? AND provider = "spotify"', [$spotifyTitle]) !== null, 'the quota stop keeps links already stored');
+$spotifyExpired = (new App\Spotify\Links($db, ['enabled' => true, 'client_id' => 'id', 'client_secret' => 'secret']))->run(true, 1, microtime(true) - 1);
+check($spotifyExpired['errors'] === 0 && $spotifyExpired['updated'] === 0 && str_contains($spotifyExpired['message'], 'time budget'), 'Spotify stops before the first request once the time budget is spent');
+foreach ([$spotifyKept, $spotifyUpc, $spotifyTitle, $spotifyAmbiguous] as $spotifyId) {
+    $db->exec('DELETE FROM provider_records WHERE provider = "spotify" AND entity_type = "release" AND external_id = ?', [(string) $spotifyId]);
+    $db->exec('DELETE FROM releases WHERE id = ?', [$spotifyId]);
+}
+$db->exec('DELETE FROM artists WHERE id = ?', [$spotifyArtist]);
+$db->exec("DELETE FROM provider_records WHERE provider = 'spotify' AND payload_json = '{\"fixture\":\"shield\"}'");
 check(App\JobRunner::deadline(['job_time_budget' => 0]) === null, 'job_time_budget 0 means no deadline');
 check(abs((App\JobRunner::deadline(['job_time_budget' => 150], 1000.0) ?? 0) - 1150.0) < 0.001, 'job_time_budget sets the deadline from the request start');
 check(App\JobRunner::deadline([], 1000.0) === ((int) ini_get('max_execution_time') > 0 ? 1000.0 + max(20, (int) ini_get('max_execution_time') - 30) : null), 'without config the deadline follows max_execution_time');

@@ -12,7 +12,7 @@ return [
     // Optional: at least 32 random characters open /setup?token=... once, until storage/install.done exists.
     // Only needed on hosting without shell access; leave empty otherwise.
     'setup_token' => '',
-    // Optional: at least 32 random characters let a web cron call /jobs/run?token=...&source=discogs|deezer|apple.
+    // Optional: at least 32 random characters let a web cron call /jobs/run?token=...&source=discogs|deezer|apple|spotify|cache.
     // Leave empty when the catalogue jobs run from a shell cron instead.
     'cron_token' => '',
     // Optional: seconds a catalogue run may take before it stops cleanly (0 = unlimited).
@@ -56,10 +56,15 @@ return [
         'country' => 'at',
         'timeout' => 20,
     ],
+    // Spotify has no public search. Create an app at https://developer.spotify.com/dashboard
+    // (Web API, Client Credentials; the redirect URI is unused) and paste its id and secret.
+    // The source stays off until both values are set and enabled is true. The app owner
+    // needs Spotify Premium while the app remains in development mode.
     'spotify' => [
         'enabled' => false,
         'client_id' => '',
         'client_secret' => '',
+        'market' => 'AT',
     ],
     'legacy_export' => dirname(__DIR__) . '/data/content.json',
 ];

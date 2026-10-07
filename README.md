@@ -153,7 +153,7 @@ Exit-Codes: `0` in Ordnung, `1` Fehler, `2` anderer Lauf hält die Sperre, `3` K
 
 Ein einzelner unauthentifizierter Abruf von `/labels/316841/releases?per_page=1&page=1` am 7. Oktober 2026 antwortete mit `pagination.items = 18`. Ein vollständiger Live-Import wurde nicht ausgeführt. Der sichtbare Katalog ist der Archivimport.
 
-Spotify ist in der Beispielkonfiguration aus; die Spotify-API verlangt eine registrierte App mit Client-ID und Secret und ist deshalb nicht angebunden. Manuell gesetzte Spotify-Links funktionieren ohne API. Der Player wird erst nach „Player laden“ eingebettet, nicht über dem Cover.
+**Spotify** (`App\Spotify\Links`, Web API, Client Credentials): Spotify hat keine öffentliche Suche. Sobald `spotify.client_id` und `spotify.client_secret` in `config.php` stehen und `enabled` wahr ist, sucht jeder Cron-Lauf bis zu 25 Releases ohne Spotify-Link. Zuerst über die UPC, sonst über Albumtitel und Künstler – und nur, wenn genau ein Treffer in Titel und Künstler übereinstimmt (Groß-/Kleinschreibung, Satzzeichen, Akzente, „- Single“, ein Klammerzusatz am Ende). Mehrdeutige Treffer bleiben ohne Link; den setzt man im Admin. Ein Fehltreffer wird 30 Tage in `provider_records` gemerkt. Das Secret bleibt in `config.php` und kommt nicht ins Repository. Ohne Zugangsdaten wird die Quelle übersprungen, die übrigen laufen normal. Der Player auf der Release-Seite wird erst nach „Player laden“ eingebettet.
 
 Eigene Releases, die in öffentlichen Datenbanken fehlen:
 
@@ -178,13 +178,13 @@ Ein Job genügt: `sync-releases` enthält den Import aller Quellen und die Cache
 
 ### Cron per URL
 
-Hosting ohne Shell (World4You „Web-Cronjobs“) kann nur Adressen aufrufen. Dafür gibt es `/jobs/run`, abgesichert mit `cron_token` in `config.php` (mindestens 32 zufällige Zeichen; `php -r 'echo bin2hex(random_bytes(24));'`). Ohne oder mit falschem Token antwortet die Adresse mit 404. Ein Aufruf synchronisiert alle Quellen (Discogs, Deezer, Apple Music, Discogs-Cache) und bleibt dabei innerhalb der Laufzeitgrenze (bei World4You gelten für Web- und Cron-Aufrufe `max_execution_time` 180 s und `memory_limit` 512 M); die Startquelle wechselt von Lauf zu Lauf:
+Hosting ohne Shell (World4You „Web-Cronjobs“) kann nur Adressen aufrufen. Dafür gibt es `/jobs/run`, abgesichert mit `cron_token` in `config.php` (mindestens 32 zufällige Zeichen; `php -r 'echo bin2hex(random_bytes(24));'`). Ohne oder mit falschem Token antwortet die Adresse mit 404. Ein Aufruf synchronisiert alle Quellen (Discogs, Deezer, Apple Music, Spotify sofern Zugangsdaten eingetragen sind, Discogs-Cache) und bleibt dabei innerhalb der Laufzeitgrenze (bei World4You gelten für Web- und Cron-Aufrufe `max_execution_time` 180 s und `memory_limit` 512 M); die Startquelle wechselt von Lauf zu Lauf:
 
 ```text
 https://www.bleedingstar.at/jobs/run?token=…
 ```
 
-Ein Web-Cronjob alle vier Stunden reicht. Wer die Quellen lieber getrennt plant, hängt `&source=discogs|deezer|apple|cache` an; dann erledigt ein Aufruf nur diese Quelle.
+Ein Web-Cronjob alle vier Stunden reicht. Wer die Quellen lieber getrennt plant, hängt `&source=discogs|deezer|apple|spotify|cache` an; dann erledigt ein Aufruf nur diese Quelle.
 
 Die Antwort ist eine Textzeile wie in der CLI (`sync-releases run created=… updated=… reviews=…`), Status 200; 409, wenn ein anderer Lauf die Sperre hält; 500 bei einem Fehler. `&dry=1` zählt nur. Jeder Lauf steht wie die CLI-Läufe in `sync_runs` und im Admin. `&task=remove-legacy-content` führt statt des Imports die einmalige Bereinigung der alten Inhalte (News, Events, Radio, Downloads) aus (siehe Installation); andere Werte für `task` antworten mit 404.
 

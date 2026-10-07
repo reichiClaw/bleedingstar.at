@@ -72,7 +72,7 @@ final class JobRunner
         }
     }
 
-    public const SOURCES = ['discogs', 'deezer', 'apple', 'cache'];
+    public const SOURCES = ['discogs', 'deezer', 'apple', 'spotify', 'cache'];
 
     /**
      * Walks the enabled sources; $only limits the run to one of them. A full run (no $only)
@@ -103,6 +103,9 @@ final class JobRunner
                 $list[] = $name;
             }
         }
+        if (Spotify\Links::configured(source_config($config, 'spotify'))) {
+            $list[] = 'spotify';
+        }
         $list[] = 'cache';
         return $list;
     }
@@ -120,6 +123,9 @@ final class JobRunner
             case 'apple':
                 $apple = source_config($config, 'apple');
                 return (new Apple\Links($this->db, $apple))->run($dry, (int) ($apple['per_run'] ?? 25), $deadline);
+            case 'spotify':
+                $spotify = source_config($config, 'spotify');
+                return (new Spotify\Links($this->db, $spotify))->run($dry, (int) ($spotify['per_run'] ?? 25), $deadline);
             case 'cache':
                 $sync = new Discogs\Sync($this->db, new Discogs\Client($config['discogs']), $config['discogs'], $this->root);
                 return $sync->refreshCache($dry, $deadline);
