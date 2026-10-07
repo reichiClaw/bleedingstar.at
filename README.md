@@ -68,9 +68,45 @@ location ~ \.php$ {
 
 Medien unter `/media/…` laufen durch PHP, mit Pfadprüfung und einer Allowlist für Bilder und PDF. In `storage/uploads` abgelegte Dateien werden nicht als PHP ausgeführt.
 
-### Produktion
+### Produktion bei World4You
 
-Die bisherige WordPress-Datenbank ist MySQL 5.1 und für diesen Relaunch nicht geeignet. Eine neue Datenbank muss angelegt werden; die Zugangsdaten kommen dann in `config/config.php`. Die alte WordPress-Installation wird von diesem Code nicht überschrieben.
+Der Server ist ein World4You-Webhosting (Apache, FTPS, kein SSH). FTP-Wurzel und Web-Wurzel sind dieselbe Ebene (`/home/.sites/288/site940/web`). Daraus ergibt sich diese Ablage:
+
+```text
+/                 ← public/        (index.php, .htaccess, assets)
+/app/src          ← src/
+/app/templates    ← templates/
+/app/config       ← config/        (config.php wird nie überschrieben)
+/app/bin          ← bin/
+/app/database     ← database/
+/app/data         ← data/
+/app/storage      ← storage/       (logs, locks, jobs, cache werden nie überschrieben; uploads nur ergänzt)
+/app/.htaccess    ← deploy/app.htaccess   (alles verboten)
+/wp-content/uploads/.htaccess ← deploy/wp-uploads.htaccess (nur Bilder, PDF, Audio; kein PHP)
+```
+
+`public/index.php` erkennt `app/` neben sich und findet so `src/` und `config/`. Die Wurzel-`.htaccess` beantwortet `/app/…`, `/storage/…` und Dotfiles mit 404, leitet auf https um und erlaubt nur `index.php` als PHP.
+
+Voraussetzungen, die nur im World4You-Kundenbereich erledigt werden können:
+
+1. **PHP auf 8.2 oder neuer stellen.** Der Server liefert standardmäßig PHP 7.3. `AddHandler` in `.htaccess` funktioniert dort nicht (PHP würde als Text ausgeliefert). Bis zur Umstellung zeigt `index.php` eine Wartungsseite mit Status 503.
+2. **Neue MySQL-Datenbank anlegen** (utf8mb4). Die alte WordPress-Datenbank ist MySQL 5.1 und ungeeignet. Zugangsdaten gehören in `/app/config/config.php`.
+3. **Cron**: `php /home/.sites/288/site940/web/app/bin/sync-releases.php` alle vier Stunden.
+
+Ersteinrichtung ohne Shell: In `config.php` ein `setup_token` mit mindestens 32 zufälligen Zeichen eintragen, dann `https://www.bleedingstar.at/setup?token=…` aufrufen. Die Seite legt die Tabellen an, spielt auf Wunsch `data/content.json` ein und erstellt den Admin-Zugang. Danach entsteht `storage/install.done` und die Seite ist abgeschaltet; der Token kann aus der Config entfernt werden. Solange `install.done` fehlt, antworten alle anderen Adressen mit 503.
+
+#### Deploy
+
+`tools/deploy-ftp.py` (nur Python-Standardbibliothek) liest `bleedingstar_FTP_HOST`, `bleedingstar_FTP_USER` und `bleedingstar_FTP_PASS` aus der Umgebung.
+
+```bash
+python3 tools/deploy-ftp.py list            # Server-Inventar, eine Ebene bei großen Fremdordnern
+python3 tools/deploy-ftp.py diff            # was sich ändern würde (Größe, dann SHA-256)
+python3 tools/deploy-ftp.py deploy --dry-run
+python3 tools/deploy-ftp.py deploy --config /pfad/zur/config.production.php   # Config nur, wenn sie fehlt
+```
+
+Regeln des Werkzeugs: erst Server listen, gleich große Dateien per SHA-256 vergleichen, `config.php` und Laufzeitdaten nie überschreiben, nichts löschen (Dateien, die nur am Server liegen, werden aufgelistet), Upload als `name.uploading~` plus Umbenennen, statische Dateien zuerst, PHP zuletzt, Größen prüfen. Pure-FTPd dort akzeptiert passive Datenverbindungen nur von der IP der Steuerverbindung; aus Cloud-Umgebungen mit NAT-Pool braucht es die Wiederhol-Logik dieses Clients, Standard-Clients hängen.
 
 ## Katalog
 
