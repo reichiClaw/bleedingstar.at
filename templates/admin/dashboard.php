@@ -6,6 +6,13 @@
     <li><?= (int) $counts['reviews'] ?> offene Prüffälle</li>
   </ul>
   <p><a href="/admin/pages/label">Labeltext</a> · <a href="/admin/pages/production">Production</a> · <a href="/admin/pages/radio">Radio</a></p>
+  <h2>Umgebung</h2>
+  <ul class="lined">
+    <li><span>PHP</span><span><?= e(PHP_VERSION) ?> (<?= e(PHP_SAPI) ?>)</span></li>
+    <li><span>Datenbank</span><span><?= e($env['db']) ?></span></li>
+    <li><span>Erweiterungen</span><span><?= e($env['extensions']) ?></span></li>
+    <li><span>Schreibrechte storage/</span><span><?= e($env['writable']) ?></span></li>
+  </ul>
   <h2>Letzte Jobs</h2>
   <?php if (!$runs): ?><p>Noch kein Sync.</p><?php endif; ?>
   <ul class="lined">

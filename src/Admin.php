@@ -82,7 +82,14 @@ final class Admin
             'artists' => $this->db->one("SELECT COUNT(*) AS c FROM artists WHERE status='published'")['c'] ?? 0,
             'reviews' => $this->db->one("SELECT COUNT(*) AS c FROM import_reviews WHERE status='open'")['c'] ?? 0,
         ];
-        $this->render('admin/dashboard', ['runs' => $runs, 'counts' => $counts, 'title' => 'Admin']);
+        $missing = array_filter(['pdo_mysql', 'mbstring', 'curl', 'gd', 'json', 'fileinfo'], static fn (string $ext) => !extension_loaded($ext));
+        $unwritable = array_filter(['logs', 'locks', 'cache', 'uploads', 'jobs'], static fn (string $dir) => !is_writable(app_root() . '/storage/' . $dir));
+        $env = [
+            'db' => (string) $this->db->pdo()->getAttribute(\PDO::ATTR_SERVER_VERSION),
+            'extensions' => $missing ? 'fehlt: ' . implode(', ', $missing) : 'vollständig',
+            'writable' => $unwritable ? 'fehlt: ' . implode(', ', $unwritable) : 'in Ordnung',
+        ];
+        $this->render('admin/dashboard', ['runs' => $runs, 'counts' => $counts, 'env' => $env, 'title' => 'Admin']);
     }
 
     private function releases(): void
