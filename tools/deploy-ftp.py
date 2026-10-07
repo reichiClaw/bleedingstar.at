@@ -25,7 +25,8 @@ Rules:
   - files with the same size are compared by SHA-256 (downloaded), so a same-size edit is
     still detected and an unchanged file is never re-uploaded;
   - app/config/config.php is never overwritten; runtime data in app/storage/logs|locks|jobs|cache
-    is never written; files under app/storage/uploads/ are only added, never replaced;
+    and provider covers (storage/uploads/covers/discogs|deezer, fetched by the server's own jobs)
+    are never written; other files under app/storage/uploads/ are only added, never replaced;
   - nothing is ever deleted - files that exist only on the server are reported;
   - each upload goes to <name>.uploading~ first and is renamed into place; static files first,
     PHP last; afterwards the touched directories are re-listed and sizes verified.
@@ -74,7 +75,9 @@ LOCAL_SKIP = {"/router.php", "/app/config/config.php", "/app/storage/install.don
 LOCAL_SKIP_NAMES = {".DS_Store"}
 
 CONFIG_REMOTE = "/app/config/config.php"
-RUNTIME_PREFIX = ("/app/storage/logs/", "/app/storage/locks/", "/app/storage/jobs/", "/app/storage/cache/")
+RUNTIME_PREFIX = ("/app/storage/logs/", "/app/storage/locks/", "/app/storage/jobs/", "/app/storage/cache/",
+                  # provider covers are fetched by the catalogue jobs on the server itself
+                  "/app/storage/uploads/covers/discogs/", "/app/storage/uploads/covers/deezer/")
 ADD_ONLY_PREFIX = ("/app/storage/uploads/",)
 
 MAX_DATA_TRIES = 400
