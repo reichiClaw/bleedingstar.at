@@ -186,6 +186,9 @@ final class LegacyImporter
             if ($url === '' || !preg_match('#^https?://#i', $url)) {
                 continue;
             }
+            if ($this->db->one('SELECT id FROM release_links WHERE release_id = ? AND url = ? LIMIT 1', [$id, $url])) {
+                continue;
+            }
             $this->db->exec(
                 'INSERT INTO release_links (release_id, label, url, provider, manual) VALUES (?,?,?,?,1)',
                 [$id, ($link['label'] ?? '') !== '' ? $link['label'] : 'Link', $url, $this->providerFromUrl($url)]
