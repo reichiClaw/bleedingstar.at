@@ -97,7 +97,7 @@ Voraussetzungen, die nur im World4You-Kundenbereich erledigt werden können:
 
 1. **PHP auf 8.2 oder neuer stellen.** Der Server liefert standardmäßig PHP 7.3. `AddHandler` in `.htaccess` funktioniert dort nicht (PHP würde als Text ausgeliefert). Bis zur Umstellung zeigt `index.php` eine Wartungsseite mit Status 503.
 2. **Neue MySQL-Datenbank anlegen** (utf8mb4). Die alte WordPress-Datenbank ist MySQL 5.1 und ungeeignet. Zugangsdaten gehören in `/app/config/config.php`.
-3. **Cron**: entweder `php /home/.sites/288/site940/web/app/bin/sync-releases.php` alle vier Stunden oder, wenn der Cron nur Adressen aufrufen kann, die drei `/jobs/run`-Adressen aus dem Abschnitt „Cron per URL“ (`cron_token` in `config.php` nötig).
+3. **Cron**: entweder `php /home/.sites/288/site940/web/app/bin/sync-releases.php` alle vier Stunden oder, wenn der Cron nur Adressen aufrufen kann, die eine `/jobs/run`-Adresse aus dem Abschnitt „Cron per URL“ (`cron_token` in `config.php` nötig). Jeder Cron-Lauf synchronisiert alle Quellen.
 
 Ersteinrichtung ohne Shell: In `config.php` ein `setup_token` mit mindestens 32 zufälligen Zeichen eintragen, dann `https://www.bleedingstar.at/setup?token=…` aufrufen. Die Seite legt die Tabellen an, spielt auf Wunsch `data/content.json` ein und erstellt den Admin-Zugang. Danach entsteht `storage/install.done` und die Seite ist abgeschaltet; der Token kann aus der Config entfernt werden. Solange `install.done` fehlt, antworten alle anderen Adressen mit 503.
 
@@ -128,7 +128,7 @@ Der Katalog behauptet keine Vollständigkeit. Er ist das bisherige Archiv plus d
 
 ## Quellen: Discogs, Deezer, Apple Music und eigene Daten
 
-`php bin/sync-releases.php` geht in einem Lauf alle Quellen durch: Discogs, dann Deezer, dann die Apple-Music-Verknüpfung. Jede Quelle hat ihre eigene Fehlerbehandlung; `--source=discogs|deezer|apple` beschränkt den Lauf auf eine. Für alle gilt: nur Releases mit dem Label aus der Allow-Liste, UPC verknüpft ein vorhandenes Release; derselbe Künstler mit demselben Titel (Groß-/Kleinschreibung, Satzzeichen, Akzente, ein „ - Single“-Zusatz und ein vorangestellter Künstlername im Titel zählen nicht) wird automatisch verknüpft und als erledigter Prüffall protokolliert; nur unscharfe oder mehrdeutige Treffer landen offen in `import_reviews` und werden im Admin entschieden; redaktionell gesperrte Felder bleiben unangetastet, es wird nie gelöscht. Ein erneuter Archiv-Import (`bin/install.php --import`) setzt Datum, Typ und Tracks, die ein Anbieterlauf ergänzt hat, nicht zurück.
+`php bin/sync-releases.php` geht in einem Lauf alle Quellen durch: Discogs, Deezer, die Apple-Music-Verknüpfung und die Auffrischung des Discogs-Caches (Payload und Cover älter als `max_age_hours`). Jeder Lauf beginnt mit einer anderen Quelle (`storage/jobs/rotation`), damit unter einem knappen Zeitbudget jede Quelle an die Reihe kommt. Jede Quelle hat ihre eigene Fehlerbehandlung; `--source=discogs|deezer|apple|cache` beschränkt den Lauf auf eine. Für alle gilt: nur Releases mit dem Label aus der Allow-Liste, UPC verknüpft ein vorhandenes Release; derselbe Künstler mit demselben Titel (Groß-/Kleinschreibung, Satzzeichen, Akzente, ein „ - Single“-Zusatz und ein vorangestellter Künstlername im Titel zählen nicht) wird automatisch verknüpft und als erledigter Prüffall protokolliert; nur unscharfe oder mehrdeutige Treffer landen offen in `import_reviews` und werden im Admin entschieden; redaktionell gesperrte Felder bleiben unangetastet, es wird nie gelöscht. Ein erneuter Archiv-Import (`bin/install.php --import`) setzt Datum, Typ und Tracks, die ein Anbieterlauf ergänzt hat, nicht zurück.
 
 ### Deezer
 
@@ -151,7 +151,8 @@ Ohne Token liegt der Abstand bei 2,5 Sekunden (unter dem öffentlichen Richtwert
 ```bash
 php bin/sync-releases.php --dry-run --max-pages=1
 php bin/sync-releases.php
-php bin/refresh-provider-cache.php
+php bin/sync-releases.php --source=deezer
+php bin/refresh-provider-cache.php   # nur der Discogs-Cache, sonst Teil von sync-releases
 ```
 
 Exit-Codes: `0` in Ordnung, `1` Fehler, `2` anderer Lauf hält die Sperre, `3` Kontingent. Beide Jobs teilen sich `storage/locks/catalog.lock`.
@@ -176,23 +177,22 @@ Gewünschte Planungszeitzone: **Europe/Vienna**. Wenn der Cron-Dienst in UTC lä
 
 ```cron
 CRON_TZ=Europe/Vienna
-15 3 * * * /usr/bin/php /var/www/bleedingstar/bin/sync-releases.php >> /var/www/bleedingstar/storage/logs/sync.log 2>&1
-20 */4 * * * /usr/bin/php /var/www/bleedingstar/bin/refresh-provider-cache.php >> /var/www/bleedingstar/storage/logs/provider-cache.log 2>&1
+20 */4 * * * /usr/bin/php /var/www/bleedingstar/bin/sync-releases.php >> /var/www/bleedingstar/storage/logs/sync.log 2>&1
 ```
 
-Pfade und das PHP-Binary an den Host anpassen. Der Web-Button im Admin schreibt nur `storage/jobs/sync.request`. Der nächste Lauf von `bin/sync-releases.php` (oder von `/jobs/run`) entfernt die Datei und arbeitet den Import ab. Ein normaler Webrequest startet den Import nicht.
+Ein Job genügt: `sync-releases` enthält den Import aller Quellen und die Cache-Auffrischung. Pfade und das PHP-Binary an den Host anpassen. Der Web-Button im Admin schreibt nur `storage/jobs/sync.request`. Der nächste Lauf von `bin/sync-releases.php` (oder von `/jobs/run`) entfernt die Datei und arbeitet den Import ab. Ein normaler Webrequest startet den Import nicht.
 
 ### Cron per URL
 
-Hosting ohne Shell (World4You „Web-Cronjobs“) kann nur Adressen aufrufen. Dafür gibt es `/jobs/run`, abgesichert mit `cron_token` in `config.php` (mindestens 32 zufällige Zeichen; `php -r 'echo bin2hex(random_bytes(24));'`). Ohne oder mit falschem Token antwortet die Adresse mit 404. Ein Aufruf erledigt eine Quelle, damit er innerhalb der Laufzeitgrenze bleibt (bei World4You gelten für Web- und Cron-Aufrufe `max_execution_time` 180 s und `memory_limit` 512 M):
+Hosting ohne Shell (World4You „Web-Cronjobs“) kann nur Adressen aufrufen. Dafür gibt es `/jobs/run`, abgesichert mit `cron_token` in `config.php` (mindestens 32 zufällige Zeichen; `php -r 'echo bin2hex(random_bytes(24));'`). Ohne oder mit falschem Token antwortet die Adresse mit 404. Ein Aufruf synchronisiert alle Quellen (Discogs, Deezer, Apple Music, Discogs-Cache) und bleibt dabei innerhalb der Laufzeitgrenze (bei World4You gelten für Web- und Cron-Aufrufe `max_execution_time` 180 s und `memory_limit` 512 M); die Startquelle wechselt von Lauf zu Lauf:
 
 ```text
-https://www.bleedingstar.at/jobs/run?token=…&source=discogs
-https://www.bleedingstar.at/jobs/run?token=…&source=deezer
-https://www.bleedingstar.at/jobs/run?token=…&source=apple
+https://www.bleedingstar.at/jobs/run?token=…
 ```
 
-Die Antwort ist eine Textzeile wie in der CLI (`sync-releases run created=… updated=… reviews=…`), Status 200; 409, wenn ein anderer Lauf die Sperre hält; 500 bei einem Fehler. `&dry=1` zählt nur. Jeder Lauf steht wie die CLI-Läufe in `sync_runs` und im Admin. Sinnvoll ist ein Aufruf je Quelle alle vier Stunden, zeitlich versetzt.
+Ein Web-Cronjob alle vier Stunden reicht. Wer die Quellen lieber getrennt plant, hängt `&source=discogs|deezer|apple|cache` an; dann erledigt ein Aufruf nur diese Quelle.
+
+Die Antwort ist eine Textzeile wie in der CLI (`sync-releases run created=… updated=… reviews=…`), Status 200; 409, wenn ein anderer Lauf die Sperre hält; 500 bei einem Fehler. `&dry=1` zählt nur. Jeder Lauf steht wie die CLI-Läufe in `sync_runs` und im Admin.
 
 Zeitbudget: Jede Quelle hört von sich aus auf, neue Einträge anzufassen, sobald `max_execution_time` minus 30 Sekunden erreicht ist (`job_time_budget` in `config.php` überschreibt das; `0` hebt es auf, im Shell-Cron ohne Limit gibt es keines). Die Meldung lautet dann `time budget reached, next run continues`; der nächste Lauf geht die Liste erneut durch, bereits bekannte Einträge sind schnell. Speicher: Cover werden einzeln geladen und verkleinert, 512 M reichen weit.
 

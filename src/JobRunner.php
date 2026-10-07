@@ -72,29 +72,78 @@ final class JobRunner
         }
     }
 
-    /** Walks the enabled release sources; $only limits the run to one of them. */
-    public function syncReleases(array $config, bool $dry, ?string $only = null, ?int $maxPages = null): array
+    public const SOURCES = ['discogs', 'deezer', 'apple', 'cache'];
+
+    /**
+     * Walks the enabled sources; $only limits the run to one of them. A full run (no $only)
+     * starts with a different source each time, so under a tight time budget every source
+     * gets its turn even if one of them regularly uses up the budget.
+     */
+    public function syncReleases(array $config, bool $dry, ?string $only = null, ?int $maxPages = null, ?float $deadline = null): array
     {
         $request = $this->root . '/storage/jobs/sync.request';
         if (is_file($request)) {
             unlink($request);
         }
-        $deadline = self::deadline($config);
+        $deadline ??= self::deadline($config);
+        $sources = $only !== null ? [$only] : $this->rotation($this->enabledSources($config));
         $results = [];
-        if ($only === null || $only === 'discogs') {
-            $sync = new Discogs\Sync($this->db, new Discogs\Client($config['discogs']), $config['discogs'], $this->root);
-            $results['discogs'] = $sync->importLabel($dry, $maxPages, $deadline);
-        }
-        $deezer = source_config($config, 'deezer');
-        if (($only === null && $deezer['enabled']) || $only === 'deezer') {
-            $sync = new Deezer\Sync($this->db, new Deezer\Client($deezer), $deezer, $this->root);
-            $results['deezer'] = $sync->importLabel($dry, $deadline);
-        }
-        $apple = source_config($config, 'apple');
-        if (($only === null && $apple['enabled']) || $only === 'apple') {
-            $results['apple'] = (new Apple\Links($this->db, $apple))->run($dry, (int) ($apple['per_run'] ?? 25), $deadline);
+        foreach ($sources as $source) {
+            $results[$source] = $this->runSource($source, $config, $dry, $maxPages, $deadline);
         }
         return self::mergeStats($results);
+    }
+
+    /** Sources a full run visits, in their natural order. */
+    public function enabledSources(array $config): array
+    {
+        $list = ['discogs'];
+        foreach (['deezer', 'apple'] as $name) {
+            if (source_config($config, $name)['enabled']) {
+                $list[] = $name;
+            }
+        }
+        $list[] = 'cache';
+        return $list;
+    }
+
+    private function runSource(string $source, array $config, bool $dry, ?int $maxPages, ?float $deadline): array
+    {
+        switch ($source) {
+            case 'discogs':
+                $sync = new Discogs\Sync($this->db, new Discogs\Client($config['discogs']), $config['discogs'], $this->root);
+                return $sync->importLabel($dry, $maxPages, $deadline);
+            case 'deezer':
+                $deezer = source_config($config, 'deezer');
+                $sync = new Deezer\Sync($this->db, new Deezer\Client($deezer), $deezer, $this->root);
+                return $sync->importLabel($dry, $deadline);
+            case 'apple':
+                $apple = source_config($config, 'apple');
+                return (new Apple\Links($this->db, $apple))->run($dry, (int) ($apple['per_run'] ?? 25), $deadline);
+            case 'cache':
+                $sync = new Discogs\Sync($this->db, new Discogs\Client($config['discogs']), $config['discogs'], $this->root);
+                return $sync->refreshCache($dry, $deadline);
+        }
+        return ['errors' => 1, 'message' => 'unknown source ' . $source];
+    }
+
+    /**
+     * Rotates the source order: the run starts where storage/jobs/rotation points and
+     * moves the pointer on by one for the next run.
+     */
+    private function rotation(array $sources): array
+    {
+        $count = count($sources);
+        if ($count < 2) {
+            return $sources;
+        }
+        $file = $this->root . '/storage/jobs/rotation';
+        $start = is_file($file) ? ((int) file_get_contents($file)) % $count : 0;
+        $dir = dirname($file);
+        if (is_dir($dir) || @mkdir($dir, 0775, true)) {
+            @file_put_contents($file, (string) (($start + 1) % $count));
+        }
+        return array_merge(array_slice($sources, $start), array_slice($sources, 0, $start));
     }
 
     /**

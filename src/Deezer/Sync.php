@@ -36,6 +36,10 @@ final class Sync
         foreach ($this->labelNames() as $labelName) {
             $path = '/search/album?limit=100&q=' . rawurlencode('label:"' . $labelName . '"');
             while ($path !== null) {
+                if ($deadline !== null && microtime(true) > $deadline) {
+                    $stats['message'] = trim($stats['message'] . ' time budget reached, next run continues');
+                    break 2;
+                }
                 try {
                     $list = $this->client->get($path);
                 } catch (DiscogsException $e) {

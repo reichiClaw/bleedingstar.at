@@ -23,6 +23,10 @@ final class Sync
         $page = 1;
         $pages = 1;
         do {
+            if ($deadline !== null && microtime(true) > $deadline) {
+                $stats['message'] = trim($stats['message'] . ' time budget reached, next run continues');
+                break;
+            }
             try {
                 $list = $this->client->get('/labels/' . $labelId . '/releases?per_page=100&page=' . $page);
             } catch (DiscogsException $e) {
@@ -62,13 +66,30 @@ final class Sync
         return $stats;
     }
 
-    public function refreshCache(bool $dryRun): array
+    /**
+     * Re-fetches payload and cover of every linked Discogs release whose stored copy is
+     * older than max_age_hours. Releases the label import just refreshed are skipped, so
+     * a full run does not double the API calls.
+     *
+     * @param float|null $deadline unix time after which the run stops cleanly; the next run resumes
+     */
+    public function refreshCache(bool $dryRun, ?float $deadline = null): array
     {
         $stats = ['created' => 0, 'updated' => 0, 'reviews' => 0, 'errors' => 0, 'skipped' => 0, 'message' => ''];
+        $maxAge = max(1, (int) ($this->config['max_age_hours'] ?? 4));
         $rows = $this->db->all(
-            "SELECT external_id FROM external_ids WHERE provider = 'discogs' AND entity_type = 'release'"
+            "SELECT e.external_id FROM external_ids e
+             LEFT JOIN provider_records p ON p.provider = e.provider AND p.entity_type = e.entity_type AND p.external_id = e.external_id
+             WHERE e.provider = 'discogs' AND e.entity_type = 'release'
+               AND (p.fetched_at IS NULL OR p.fetched_at < DATE_SUB(NOW(), INTERVAL ? HOUR))
+             ORDER BY p.fetched_at IS NULL DESC, p.fetched_at ASC",
+            [$maxAge]
         );
         foreach ($rows as $row) {
+            if ($deadline !== null && microtime(true) > $deadline) {
+                $stats['message'] = trim($stats['message'] . ' time budget reached, next run continues');
+                break;
+            }
             try {
                 $detail = $this->client->get('/releases/' . rawurlencode($row['external_id']));
             } catch (DiscogsException $e) {

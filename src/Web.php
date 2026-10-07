@@ -441,7 +441,7 @@ final class Web
             return;
         }
         $source = $_POST['source'] ?? $_GET['source'] ?? null;
-        if (!in_array($source, ['discogs', 'deezer', 'apple'], true)) {
+        if (!in_array($source, JobRunner::SOURCES, true)) {
             $source = null;
         }
         $dry = isset($_GET['dry']) || isset($_POST['dry']);

@@ -1,8 +1,9 @@
 <section class="wrap section">
   <h1>Sync</h1>
-  <p>Ein Klick startet keinen langen Import im Browser. Er legt nur eine Job-Datei an. Der CLI-Lauf verarbeitet sie:</p>
+  <p>Ein Klick startet keinen langen Import im Browser. Er legt nur eine Job-Datei an. Der nächste Cron-Lauf verarbeitet sie – die Web-Adresse <code>/jobs/run?token=…</code> oder die CLI:</p>
   <pre>php bin/sync-releases.php</pre>
-  <?php if ($pending): ?><p class="note">Eine Anforderung wartet auf den nächsten CLI-Lauf.</p><?php endif; ?>
+  <p class="note">Jeder Lauf ohne <code>source</code> geht alle Quellen durch (Discogs, Deezer, Apple Music, Discogs-Cache) und beginnt jedes Mal mit einer anderen, damit das Zeitbudget von 180 s fair verteilt ist.</p>
+  <?php if ($pending): ?><p class="note">Eine Anforderung wartet auf den nächsten Cron-Lauf.</p><?php endif; ?>
   <form method="post" action="/admin/sync">
     <input type="hidden" name="_csrf" value="<?= e(App\Csrf::token()) ?>">
     <button class="btn btn-accent" type="submit">Sync anfordern</button>

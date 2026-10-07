@@ -257,6 +257,31 @@ $sync->importLabel(false, 1);
 $kept = $db->one('SELECT cover_path, cover_remote_url FROM releases WHERE id=?', [$fresh['id']]);
 check($kept['cover_path'] === 'covers/manual.jpg' && $kept['cover_remote_url'] === null, 'locked cover is not replaced');
 
+$cacheFresh = $sync->refreshCache(true);
+check($cacheFresh['updated'] === 0 && $cacheFresh['errors'] === 0, 'cache refresh skips payloads the import just stored');
+$db->exec("UPDATE provider_records SET fetched_at = DATE_SUB(NOW(), INTERVAL 2 DAY) WHERE provider='discogs' AND external_id IN ('9002','9004')");
+$cacheStale = $sync->refreshCache(true);
+check($cacheStale['updated'] === 2, 'cache refresh picks up payloads older than max_age_hours');
+$cacheExpired = $sync->refreshCache(true, microtime(true) - 1);
+check($cacheExpired['updated'] === 0 && str_contains($cacheExpired['message'], 'time budget'), 'cache refresh stops once the time budget is spent');
+
+$rotationFile = app_root() . '/storage/jobs/rotation';
+$rotationBackup = is_file($rotationFile) ? file_get_contents($rotationFile) : null;
+@mkdir(dirname($rotationFile), 0775, true);
+file_put_contents($rotationFile, '1');
+$runner = new App\JobRunner($db, app_root());
+// deadline in the past: every source reports "time budget" without a single network call
+$rotated = $runner->syncReleases(app_config(), true, null, null, microtime(true) - 1);
+$order = array_map(static fn (string $part): string => trim(explode(':', $part)[0]), explode('|', $rotated['message']));
+check($order === ['deezer', 'apple', 'cache', 'discogs'], 'a full run starts at the stored rotation index and visits every source');
+check(trim((string) file_get_contents($rotationFile)) === '2', 'the rotation pointer moves on by one for the next run');
+check($runner->enabledSources(app_config()) === ['discogs', 'deezer', 'apple', 'cache'], 'enabled sources include the cache refresh');
+if ($rotationBackup === null) {
+    @unlink($rotationFile);
+} else {
+    file_put_contents($rotationFile, $rotationBackup);
+}
+
 $boom = new FixtureDiscogs([
     $listPath => new DiscogsException('Discogs quota exhausted', 429, true),
 ]);

@@ -14,7 +14,7 @@ function cli_args(array $argv): array
             $out['max_pages'] = max(1, (int) substr($arg, 12));
         } elseif (str_starts_with($arg, '--source=')) {
             $source = substr($arg, 9);
-            $out['source'] = in_array($source, ['discogs', 'deezer', 'apple'], true) ? $source : null;
+            $out['source'] = in_array($source, App\JobRunner::SOURCES, true) ? $source : null;
         }
     }
     return $out;
