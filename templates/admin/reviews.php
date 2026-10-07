@@ -1,6 +1,6 @@
 <section class="wrap section">
   <h1>Prüffälle</h1>
-  <p class="note">Gleiche Titel werden nicht automatisch zusammengeführt.</p>
+  <p class="note">Exakt gleicher Künstler und Titel wird automatisch verknüpft; hier stehen nur unscharfe oder mehrdeutige Treffer.</p>
   <?php if (!$rows): ?><p>Keine offenen Fälle.</p><?php endif; ?>
   <?php foreach ($rows as $row): ?>
     <article class="rental-card">

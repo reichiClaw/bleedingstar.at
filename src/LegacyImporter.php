@@ -111,28 +111,34 @@ final class LegacyImporter
             $cover,
             $cover ? 'legacy' : null,
         ];
+        $legacyTracks = $this->parseRepeater($meta['release_tracks'] ?? '');
         if ($existing) {
             $locked = (int) $existing['editorial_locked'] === 1;
-            if ($locked) {
-                $id = (int) $existing['id'];
-            } else {
+            $id = (int) $existing['id'];
+            if (!$locked) {
+                // A date or type that a provider run filled in is kept unless the archive knows it more precisely.
+                $rank = ['unknown' => 0, 'year' => 1, 'month' => 2, 'day' => 3];
+                $keepDate = ($rank[$existing['release_date_precision']] ?? 0) >= ($rank[$date['precision']] ?? 0);
                 $this->db->exec(
                     'UPDATE releases SET slug=?, title=?, description_html=IF(? = "" AND description_html IS NOT NULL AND description_html != "", description_html, ?),
-                     release_year=?, release_month=?, release_day=?, release_date_precision=?, release_type=?, status=?,
+                     release_year=?, release_month=?, release_day=?, release_date_precision=?, release_type=COALESCE(release_type, ?), status=?,
                      cover_path=IF(cover_source = "upload", cover_path, ?), cover_source=IF(cover_source = "upload", cover_source, ?), updated_at=?
                      WHERE id=?',
                     [
                         $slug, $release['title'], $description, $description,
-                        $date['year'], $date['month'], $date['day'], $date['precision'],
+                        $keepDate ? $existing['release_year'] : $date['year'],
+                        $keepDate ? $existing['release_month'] : $date['month'],
+                        $keepDate ? $existing['release_day'] : $date['day'],
+                        $keepDate ? $existing['release_date_precision'] : $date['precision'],
                         $type, $status,
                         $cover, $cover ? 'legacy' : $existing['cover_source'],
                         $now, $existing['id'],
                     ]
                 );
-                $id = (int) $existing['id'];
-            }
-            if (!$locked) {
-                $this->db->exec('DELETE FROM tracks WHERE release_id = ?', [$id]);
+                // Tracks a provider run added stay when the archive has none of its own.
+                if ($legacyTracks !== []) {
+                    $this->db->exec('DELETE FROM tracks WHERE release_id = ?', [$id]);
+                }
                 $this->db->exec('DELETE FROM release_links WHERE release_id = ? AND manual = 1 AND provider IS NULL', [$id]);
                 $this->db->exec('DELETE FROM release_artists WHERE release_id = ?', [$id]);
             }
@@ -157,7 +163,7 @@ final class LegacyImporter
             }
         }
         $pos = 1;
-        foreach ($this->parseRepeater($meta['release_tracks'] ?? '') as $track) {
+        foreach ($legacyTracks as $track) {
             $title = trim((string) ($track['title'] ?? ''));
             if ($title === '') {
                 continue;

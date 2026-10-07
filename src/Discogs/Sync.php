@@ -56,6 +56,9 @@ final class Sync
             $page++;
         } while ($page <= $pages && ($maxPages === null || $page <= $maxPages));
 
+        if (($stats['merged'] ?? 0) > 0) {
+            $stats['message'] = trim($stats['merged'] . ' auto-linked ' . $stats['message']);
+        }
         return $stats;
     }
 
@@ -110,6 +113,7 @@ final class Sync
         if ($existing || $groupedId) {
             if (!$dryRun) {
                 $this->updateExisting((int) ($existing ?: $groupedId), $detail, $externalId, $masterId, $stored);
+                $this->closeStaleReview($externalId, (int) ($existing ?: $groupedId));
             }
             $stats['updated']++;
             return;
@@ -119,14 +123,25 @@ final class Sync
         if ($byUpc) {
             if (!$dryRun) {
                 $this->linkExisting((int) $byUpc['release_id'], $detail, $externalId, $masterId, $upc, $stored);
+                $this->closeStaleReview($externalId, (int) $byUpc['release_id']);
             }
             $stats['updated']++;
             return;
         }
         $candidate = $this->fuzzyCandidate($detail);
         if ($candidate) {
+            $candidateId = (int) $candidate['id'];
+            if ($candidate['exact']) {
+                if (!$dryRun) {
+                    $this->adopt($candidateId, $detail, $externalId, $masterId, $upc, $stored);
+                    $this->resolveReview($externalId, $candidateId, $detail, 'Automatisch zugeordnet: gleicher Künstler und Titel (Discogs)');
+                }
+                $stats['updated']++;
+                $stats['merged'] = ($stats['merged'] ?? 0) + 1;
+                return;
+            }
             if (!$dryRun) {
-                $this->queueReview($externalId, (int) $candidate['id'], $detail, 'Gleicher normalisierter Künstler und Titel');
+                $this->queueReview($externalId, $candidateId, $detail, 'Gleicher Künstler und Titel, aber mehrere Releases kommen in Frage');
             }
             $stats['reviews']++;
             return;
@@ -226,13 +241,54 @@ final class Sync
         $releaseId = (int) $review['candidate_release_id'];
         $master = (string) ($detail['master_id'] ?? '');
         $this->db->transaction(function () use ($review, $detail, $releaseId, $master) {
-            $this->linkExisting($releaseId, $detail, (string) $review['external_id'], $master, $this->barcode($detail));
-            $count = $this->db->one('SELECT COUNT(*) AS c FROM tracks WHERE release_id = ?', [$releaseId]);
-            if ((int) ($count['c'] ?? 0) === 0) {
-                $this->replaceTracks($releaseId, $detail);
-            }
+            $this->adopt($releaseId, $detail, (string) $review['external_id'], $master, $this->barcode($detail), null);
             $this->db->exec("UPDATE import_reviews SET status = 'merged' WHERE id = ?", [$review['id']]);
         });
+        return true;
+    }
+
+    /** Links a Discogs release to an existing catalogue release and fills an empty tracklist. */
+    private function adopt(int $releaseId, array $detail, string $externalId, string $masterId, ?string $upc, ?array $stored): void
+    {
+        $this->linkExisting($releaseId, $detail, $externalId, $masterId, $upc, $stored);
+        $count = $this->db->one('SELECT COUNT(*) AS c FROM tracks WHERE release_id = ?', [$releaseId]);
+        if ((int) ($count['c'] ?? 0) === 0) {
+            $this->replaceTracks($releaseId, $detail);
+        }
+    }
+
+    /** Closes an open review for this release or records the automatic link so it can be traced. */
+    private function resolveReview(string $externalId, int $candidateId, array $detail, string $reason): void
+    {
+        if ($this->closeOpenReview($externalId, $candidateId, $reason)) {
+            return;
+        }
+        $this->db->exec(
+            'INSERT IGNORE INTO import_reviews (provider, external_id, candidate_release_id, payload_json, reason, status, created_at) VALUES ("discogs",?,?,?,?,"merged",NOW())',
+            [$externalId, $candidateId, json_encode($detail, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $reason]
+        );
+    }
+
+    /** A release linked by id, master or UPC needs no open review any more. */
+    private function closeStaleReview(string $externalId, int $releaseId): void
+    {
+        $this->closeOpenReview($externalId, $releaseId, 'Automatisch zugeordnet: über UPC oder vorhandene Verknüpfung (Discogs)');
+    }
+
+    /** Marks the open review of this release as merged; returns false when there was none. */
+    private function closeOpenReview(string $externalId, int $releaseId, string $reason): bool
+    {
+        $open = $this->db->one("SELECT id FROM import_reviews WHERE provider='discogs' AND external_id=? AND status='open'", [$externalId]);
+        if (!$open) {
+            return false;
+        }
+        // (provider, external_id, status) is unique: when a merged row already exists, the open one is simply dropped.
+        $merged = $this->db->one("SELECT id FROM import_reviews WHERE provider='discogs' AND external_id=? AND status='merged'", [$externalId]);
+        if ($merged) {
+            $this->db->exec('DELETE FROM import_reviews WHERE id=?', [$open['id']]);
+        } else {
+            $this->db->exec("UPDATE import_reviews SET status='merged', candidate_release_id=?, reason=? WHERE id=?", [$releaseId, $reason, $open['id']]);
+        }
         return true;
     }
 
@@ -523,12 +579,17 @@ final class Sync
              JOIN artists a ON a.id = ra.artist_id
              WHERE r.source = 'legacy'"
         );
+        $matches = [];
         foreach ($rows as $row) {
             if (normalize_match_key($row['title']) === $titleKey && normalize_match_key($row['artist_name']) === $artistKey) {
-                return $row;
+                $matches[] = $row;
             }
         }
-        return null;
+        if ($matches === []) {
+            return null;
+        }
+        // One archive release with this artist and title is linked automatically; several only become a review.
+        return $matches[0] + ['exact' => count($matches) === 1];
     }
 
     private function parseReleased(string $released, int $year): array

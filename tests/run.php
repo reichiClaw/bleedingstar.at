@@ -96,7 +96,13 @@ check($right['tracks'] !== [], 'tracklist is present');
 check($right['related'] !== [] && !in_array('right-now', array_column($right['related'], 'slug'), true), 'related releases are other label releases');
 
 $unknown = $catalog->findRelease('feeling-to-rock');
-check($unknown !== null && $unknown['release_date_precision'] === 'unknown' && $unknown['release_year'] === null, 'missing date stays unknown');
+$unknownLinked = $unknown ? $db->one("SELECT 1 FROM external_ids WHERE entity_type = 'release' AND entity_id = ?", [$unknown['id']]) : null;
+check(
+    $unknown !== null && ($unknownLinked
+        ? $unknown['release_date_precision'] !== 'unknown'
+        : ($unknown['release_date_precision'] === 'unknown' && $unknown['release_year'] === null)),
+    $unknownLinked ? 'date filled by a provider survives the archive re-import' : 'missing date stays unknown'
+);
 
 $db->exec(
     'INSERT INTO external_ids (provider, entity_type, entity_id, external_id) VALUES ("discogs","release",1,"fixture-dup")'
@@ -173,6 +179,14 @@ $artistId = $db->insert(
 );
 $db->exec('INSERT INTO release_artists (release_id, artist_id, position) VALUES (?,?,0)', [$legacyId, $artistId]);
 $db->exec('INSERT INTO release_formats (release_id, name, upc) VALUES (?,"Digital","000TESTUPC")', [$legacyId]);
+// Two archive releases with the same artist and title: a Discogs match cannot pick one automatically.
+foreach (['a', 'b'] as $suffix) {
+    $twiceId = $db->insert(
+        'INSERT INTO releases (slug, title, status, source, release_date_precision, created_at, updated_at) VALUES (?,?,"published","legacy","unknown",NOW(),NOW())',
+        [slugify($marker . ' twice ' . $suffix), $marker . ' Twice']
+    );
+    $db->exec('INSERT INTO release_artists (release_id, artist_id, position) VALUES (?,?,0)', [$twiceId, $artistId]);
+}
 
 $listPath = '/labels/316841/releases?per_page=100&page=1';
 $detail = static function (int $id, string $title, string $artist, string $artistId, ?string $upc = null, int $master = 0): array {
@@ -194,20 +208,25 @@ $detail = static function (int $id, string $title, string $artist, string $artis
 };
 $client = new FixtureDiscogs([
     $listPath => ['pagination' => ['pages' => 1], 'releases' => [
-        ['id' => 9001], ['id' => 9002], ['id' => 9003], ['id' => 9004],
+        ['id' => 9001], ['id' => 9002], ['id' => 9003], ['id' => 9004], ['id' => 9005],
     ]],
     '/releases/9001' => $detail(9001, $marker . ' Shared', $marker . ' Artist', '88001'),
     '/releases/9002' => $detail(9002, $marker . ' Other Title', $marker . ' Other', '88002'),
     '/releases/9003' => $detail(9003, $marker . ' UPC', $marker . ' Nobody', '88003', '000TESTUPC'),
     '/releases/9004' => $detail(9004, $marker . ' Fresh', $marker . ' Fresh Artist', '88004', null, 70001),
+    '/releases/9005' => $detail(9005, $marker . ' Twice', $marker . ' Artist', '88001'),
 ]);
 $sync = new Sync($db, $client, $discogsConfig);
 $stats = $sync->importLabel(false, 1);
-check($stats['reviews'] === 1, 'same artist and title is queued, not merged');
+check($stats['reviews'] === 1, 'same artist and title with two possible releases is queued');
 check($stats['created'] === 2, 'distinct title and a new master are created');
-check($stats['updated'] === 1, 'matching UPC links the existing release');
+check($stats['updated'] === 2 && ($stats['merged'] ?? 0) === 1 && str_contains($stats['message'], 'auto-linked'), 'matching UPC and the unique artist+title match link existing releases');
 $created = (int) $db->one('SELECT COUNT(*) AS c FROM releases WHERE title = ?', [$marker . ' Shared'])['c'];
-check($created === 1, 'fuzzy match did not create a second Shared release');
+check($created === 1, 'exact match did not create a second Shared release');
+check($db->one("SELECT id FROM external_ids WHERE provider='discogs' AND entity_type='release' AND external_id='9001' AND entity_id=?", [$legacyId]) !== null, 'exact Discogs match is linked to the archive release');
+$auto = $db->one("SELECT status, reason FROM import_reviews WHERE provider='discogs' AND external_id='9001'");
+check($auto !== null && $auto['status'] === 'merged' && str_starts_with($auto['reason'], 'Automatisch'), 'automatic link is recorded as a merged review');
+check((int) $db->one('SELECT COUNT(*) AS c FROM releases WHERE title = ?', [$marker . ' Twice'])['c'] === 2, 'ambiguous match creates nothing and merges nothing');
 $yearOnly = $db->one('SELECT release_year, release_month, release_day, release_date_precision FROM releases WHERE title = ?', [$marker . ' Fresh']);
 check(
     $yearOnly
@@ -223,13 +242,14 @@ $statsAgain = $sync->importLabel(false, 1);
 check($statsAgain['created'] === 0, 'second import creates no duplicates');
 $externalCount = (int) $db->one("SELECT COUNT(*) AS c FROM external_ids WHERE external_id='9004' AND entity_type='release'")['c'];
 check($externalCount === 1, 'external release id stays unique');
-$review = $db->one("SELECT id, status FROM import_reviews WHERE external_id='9001' AND status='open'");
+$review = $db->one("SELECT id, status, candidate_release_id FROM import_reviews WHERE external_id='9005' AND status='open'");
 check($review !== null, 'review row is open');
 check($sync->mergeReview((int) $review['id']) === true, 'manual merge links the review');
 $merged = $db->one("SELECT status FROM import_reviews WHERE id=?", [$review['id']]);
 check($merged['status'] === 'merged', 'review is marked merged');
 $linkedTracks = (int) $db->one('SELECT COUNT(*) AS c FROM tracks WHERE release_id=?', [$legacyId])['c'];
-check($linkedTracks === 1, 'merge copies tracks only when the release had none');
+check($linkedTracks === 1, 'automatic link copies tracks only when the release had none');
+check((int) $db->one('SELECT COUNT(*) AS c FROM tracks WHERE release_id=?', [$review['candidate_release_id']])['c'] === 1, 'manual merge copies tracks to the chosen release');
 
 $fresh = $db->one('SELECT * FROM releases WHERE title=?', [$marker . ' Fresh']);
 $db->exec('UPDATE releases SET editorial_locked=1, cover_remote_url=NULL, cover_source="upload", cover_path="covers/manual.jpg" WHERE id=?', [$fresh['id']]);
@@ -288,6 +308,11 @@ $dzBandId = $db->insert(
     [slugify($marker . ' band'), 'The ' . $marker . ' Band']
 );
 $db->exec('INSERT INTO release_artists (release_id, artist_id, position) VALUES (?,?,0)', [$dzLegacyId, $dzBandId]);
+$dzExactId = $db->insert(
+    'INSERT INTO releases (slug, title, status, source, release_year, release_date_precision, created_at, updated_at) VALUES (?,?,"published","legacy",2020,"year",NOW(),NOW())',
+    [slugify($marker . ' dz exact'), $marker . ' Exact - Single']
+);
+$db->exec('INSERT INTO release_artists (release_id, artist_id, position) VALUES (?,?,0)', [$dzExactId, $dzBandId]);
 
 $dzAlbum = static function (int $id, string $title, string $artist, int $artistId, string $label, ?string $upc, string $type = 'single'): array {
     return [
@@ -310,7 +335,13 @@ $dzTracks = ['data' => [
 ]];
 $dzSearch = '/search/album?limit=100&q=' . rawurlencode('label:"BleedingStar Records"');
 $dzClient = new FixtureDeezer([
-    $dzSearch => ['data' => [['id' => 7001], ['id' => 7002], ['id' => 7003], ['id' => 7004]], 'total' => 4],
+    $dzSearch => ['data' => [['id' => 7001], ['id' => 7002], ['id' => 7003], ['id' => 7004], ['id' => 7005], ['id' => 7006]], 'total' => 6],
+    // Shop-style title "<artist> - <title>" by the same band: unique exact match, linked automatically.
+    '/album/7005' => $dzAlbum(7005, $marker . ' Band - ' . $marker . ' Exact', 'The ' . $marker . ' Band', 66001, 'BleedingStar Records', '000DZUPC5'),
+    '/album/7005/tracks' => $dzTracks,
+    // Same title again: the release already carries another Deezer album, so this one is a review.
+    '/album/7006' => $dzAlbum(7006, $marker . ' Exact', 'The ' . $marker . ' Band', 66001, 'BleedingStar Records', '000DZUPC6'),
+    '/album/7006/tracks' => $dzTracks,
     '/album/7001' => $dzAlbum(7001, $marker . ' Deezer Shared (Radio Edit)', $marker . ' Band', 66001, 'BleedingStar Records', '000DZUPC1'),
     '/album/7001/tracks' => $dzTracks,
     '/album/7002' => $dzAlbum(7002, $marker . ' Deezer Fresh', $marker . ' Newcomer', 66002, 'BleedingStar Records', '000DZUPC2', 'ep'),
@@ -321,12 +352,27 @@ $dzClient = new FixtureDeezer([
     '/album/7004/tracks' => $dzTracks,
 ]);
 $dzConfig = ['label_names' => ['BleedingStar Records'], 'user_agent' => 'test'];
+// A review left over from an earlier run; the UPC link resolves it without a manual step.
+$db->exec(
+    'INSERT INTO import_reviews (provider, external_id, candidate_release_id, payload_json, reason, status, created_at) VALUES ("deezer","7004",?,"{}","alt","open",NOW())',
+    [$legacyId]
+);
 $dz = new App\Deezer\Sync($db, $dzClient, $dzConfig);
 $dzStats = $dz->importLabel(false);
+$dzStale = $db->one("SELECT status, reason FROM import_reviews WHERE provider='deezer' AND external_id='7004'");
+check($dzStale !== null && $dzStale['status'] === 'merged' && str_contains($dzStale['reason'], 'UPC'), 'a stale review is closed once the album is linked by UPC');
 check($dzStats['skipped'] === 1, 'Deezer album of another label is skipped');
 check($dzStats['created'] === 1, 'Deezer creates only the unknown release');
-check($dzStats['updated'] === 1, 'Deezer UPC match links the existing release');
-check($dzStats['reviews'] === 1, 'Deezer same artist and similar title becomes a review');
+check($dzStats['updated'] === 2 && ($dzStats['merged'] ?? 0) === 1, 'Deezer UPC match and the exact artist+title match link existing releases');
+check($dzStats['reviews'] === 2, 'Deezer similar title and a second album for a linked release become reviews');
+check($db->one("SELECT id FROM external_ids WHERE provider='deezer' AND entity_type='release' AND external_id='7005' AND entity_id=?", [$dzExactId]) !== null, 'exact Deezer match with artist prefix in the title is linked automatically');
+$dzExactRow = $db->one('SELECT release_date_precision, title FROM releases WHERE id = ?', [$dzExactId]);
+check($dzExactRow['release_date_precision'] === 'day' && $dzExactRow['title'] === $marker . ' Exact - Single', 'automatic link enriches the date and keeps the archive title');
+check((int) $db->one('SELECT COUNT(*) AS c FROM tracks WHERE release_id = ?', [$dzExactId])['c'] === 2, 'automatic link fills the empty tracklist');
+$dzAuto = $db->one("SELECT status, reason FROM import_reviews WHERE provider='deezer' AND external_id='7005'");
+check($dzAuto !== null && $dzAuto['status'] === 'merged' && str_starts_with($dzAuto['reason'], 'Automatisch'), 'automatic Deezer link is recorded as a merged review');
+$dzSecond = $db->one("SELECT reason FROM import_reviews WHERE provider='deezer' AND external_id='7006' AND status='open'");
+check($dzSecond !== null && str_contains($dzSecond['reason'], 'anderes Deezer-Album'), 'second Deezer album for the same release stays a review');
 $dzFresh = $db->one('SELECT * FROM releases WHERE title = ?', [$marker . ' Deezer Fresh']);
 check($dzFresh !== null && $dzFresh['release_date_precision'] === 'day' && (int) $dzFresh['release_day'] === 6 && $dzFresh['release_type'] === 'ep', 'Deezer release carries exact date and type');
 $dzTrackRows = $db->all('SELECT title, duration, isrc FROM tracks WHERE release_id = ? ORDER BY position', [$dzFresh['id'] ?? 0]);
@@ -342,7 +388,7 @@ $dzMerged = $db->one('SELECT release_year, release_month, release_day, release_d
 check($dzMerged['release_date_precision'] === 'day' && (int) $dzMerged['release_month'] === 5 && (int) $dzMerged['release_day'] === 6, 'merge upgrades a year-only date to the exact day');
 check((int) $db->one('SELECT COUNT(*) AS c FROM tracks WHERE release_id = ?', [$dzLegacyId])['c'] === 2, 'merge fills the empty tracklist');
 $dzAgain = $dz->importLabel(false);
-check($dzAgain['created'] === 0 && $dzAgain['reviews'] === 0 && $dzAgain['updated'] === 3, 'second Deezer run only refreshes the linked releases');
+check($dzAgain['created'] === 0 && $dzAgain['reviews'] === 1 && $dzAgain['updated'] === 4, 'second Deezer run only refreshes the linked releases and keeps the open review');
 $db->exec('UPDATE releases SET editorial_locked=1, release_date_precision="year", release_month=NULL, release_day=NULL WHERE id=?', [$dzLegacyId]);
 $dz->importLabel(false);
 $dzLocked = $db->one('SELECT release_date_precision FROM releases WHERE id = ?', [$dzLegacyId]);
@@ -359,16 +405,16 @@ check($dzCovers->existing('7002') === null || is_file(app_root() . '/storage/upl
 check($dzCovers->existing('not-an-id') === null, 'existing cover lookup rejects non-numeric ids');
 
 $idsToDrop = $db->all(
-    'SELECT id FROM releases WHERE title LIKE ? OR id = ? OR id = ?',
-    [$marker . '%', $legacyId, $dzLegacyId]
+    'SELECT id FROM releases WHERE title LIKE ? OR id IN (?, ?, ?)',
+    [$marker . '%', $legacyId, $dzLegacyId, $dzExactId]
 );
 foreach ($idsToDrop as $row) {
     $db->exec('DELETE FROM releases WHERE id=?', [$row['id']]);
 }
-$db->exec("DELETE FROM external_ids WHERE external_id IN ('9001','9002','9003','9004','88001','88002','88003','88004','70001','7001','7002','7003','7004','66001','66002','66003','66004')");
-$db->exec("DELETE FROM provider_records WHERE external_id IN ('9001','9002','9003','9004','7001','7002','7003','7004')");
+$db->exec("DELETE FROM external_ids WHERE external_id IN ('9001','9002','9003','9004','88001','88002','88003','88004','70001','7001','7002','7003','7004','7005','7006','66001','66002','66003','66004','9005')");
+$db->exec("DELETE FROM provider_records WHERE external_id IN ('9001','9002','9003','9004','9005','7001','7002','7003','7004','7005','7006')");
 $db->exec('DELETE FROM artists WHERE name LIKE ? OR name LIKE ?', [$marker . '%', 'The ' . $marker . '%']);
-$db->exec('DELETE FROM import_reviews WHERE external_id IN ("9001","9002","9003","9004","7001","7002","7003","7004")');
+$db->exec('DELETE FROM import_reviews WHERE external_id IN ("9001","9002","9003","9004","9005","7001","7002","7003","7004","7005","7006")');
 $left = (int) $db->one('SELECT COUNT(*) AS c FROM releases WHERE title LIKE ?', [$marker . '%'])['c'];
 check($left === 0, 'fixture releases removed');
 check((int) $db->one("SELECT COUNT(*) AS c FROM releases WHERE status='published'")['c'] === $publishedReleases, 'public catalog count restored');

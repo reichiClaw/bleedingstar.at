@@ -67,6 +67,9 @@ final class Sync
                 $path = $next !== '' ? $this->relative($next) : null;
             }
         }
+        if (($stats['merged'] ?? 0) > 0) {
+            $stats['message'] = trim($stats['merged'] . ' auto-linked ' . $stats['message']);
+        }
         return $stats;
     }
 
@@ -90,6 +93,7 @@ final class Sync
         if ($existing) {
             if (!$dryRun) {
                 $this->enrich($existing, $album, $externalId, $upc, $stored);
+                $this->closeStaleReview($externalId, $existing);
             }
             $stats['updated']++;
             return;
@@ -98,14 +102,29 @@ final class Sync
         if ($byUpc) {
             if (!$dryRun) {
                 $this->enrich((int) $byUpc['release_id'], $album, $externalId, $upc, $stored);
+                $this->closeStaleReview($externalId, (int) $byUpc['release_id']);
             }
             $stats['updated']++;
             return;
         }
         $candidate = $this->fuzzyCandidate($album);
         if ($candidate) {
+            $candidateId = (int) $candidate['id'];
+            $reason = $candidate['exact'] ? null : 'Gleicher Künstler, ähnlicher Titel (Deezer)';
+            if ($candidate['exact'] && $this->hasOtherDeezerAlbum($candidateId, $externalId)) {
+                $reason = 'Gleicher Künstler und Titel, aber dem Release ist schon ein anderes Deezer-Album zugeordnet';
+            }
+            if ($reason === null) {
+                if (!$dryRun) {
+                    $this->enrich($candidateId, $album, $externalId, $upc, $stored);
+                    $this->resolveReview($externalId, $candidateId, $album, 'Automatisch zugeordnet: gleicher Künstler und Titel (Deezer)');
+                }
+                $stats['updated']++;
+                $stats['merged'] = ($stats['merged'] ?? 0) + 1;
+                return;
+            }
             if (!$dryRun) {
-                $this->queueReview($externalId, (int) $candidate['id'], $album, 'Gleicher Künstler und ähnlicher Titel (Deezer)');
+                $this->queueReview($externalId, $candidateId, $album, $reason);
             }
             $stats['reviews']++;
             return;
@@ -399,27 +418,98 @@ final class Sync
         );
     }
 
+    /**
+     * Release of another source by the same artist with the same title.
+     * 'exact' is true when exactly one release matches on the strict key (case,
+     * punctuation, accents, " - Single" and a leading "<artist> - " ignored); such a
+     * match is linked automatically. A loose match (brackets, EP/Single/Edit suffixes
+     * ignored) or several strict matches only become a review.
+     *
+     * @return array{id:int|string, title:string, artist_name:string, exact:bool}|null
+     */
     private function fuzzyCandidate(array $album): ?array
     {
-        $titleKey = $this->looseKey((string) ($album['title'] ?? ''));
-        $artistKey = $this->artistKey((string) ($album['artist']['name'] ?? ''));
-        if ($titleKey === '' || $artistKey === '') {
+        $artistName = (string) ($album['artist']['name'] ?? '');
+        $title = (string) ($album['title'] ?? '');
+        $strictKey = $this->strictKey($title, $artistName);
+        $looseKey = $this->looseKey($title, $artistName);
+        $artistKey = $this->artistKey($artistName);
+        if ($looseKey === '' || $artistKey === '') {
             return null;
         }
         // Two Deezer albums are never the same release, so only other sources are candidates.
         $rows = $this->db->all(
-            "SELECT r.id, r.title, a.name AS artist_name
+            "SELECT DISTINCT r.id, r.title, a.name AS artist_name
              FROM releases r
              JOIN release_artists ra ON ra.release_id = r.id
              JOIN artists a ON a.id = ra.artist_id
              WHERE r.source <> 'deezer'"
         );
+        $strict = [];
+        $loose = null;
         foreach ($rows as $row) {
-            if ($this->looseKey((string) $row['title']) === $titleKey && $this->artistKey((string) $row['artist_name']) === $artistKey) {
-                return $row;
+            $rowArtist = (string) $row['artist_name'];
+            if ($this->artistKey($rowArtist) !== $artistKey) {
+                continue;
+            }
+            $rowTitle = (string) $row['title'];
+            if ($strictKey !== '' && $this->strictKey($rowTitle, $rowArtist) === $strictKey) {
+                $strict[(int) $row['id']] = $row;
+            } elseif ($loose === null && $this->looseKey($rowTitle, $rowArtist) === $looseKey) {
+                $loose = $row;
             }
         }
-        return null;
+        if (count($strict) === 1) {
+            return reset($strict) + ['exact' => true];
+        }
+        if ($strict !== []) {
+            return reset($strict) + ['exact' => false];
+        }
+        return $loose !== null ? $loose + ['exact' => false] : null;
+    }
+
+    /** True when a different Deezer album is already linked to this release. */
+    private function hasOtherDeezerAlbum(int $releaseId, string $externalId): bool
+    {
+        return $this->db->one(
+            "SELECT 1 FROM external_ids WHERE provider = 'deezer' AND entity_type = 'release' AND entity_id = ? AND external_id <> ?",
+            [$releaseId, $externalId]
+        ) !== null;
+    }
+
+    /** An album linked by id or UPC needs no open review any more. */
+    private function closeStaleReview(string $externalId, int $releaseId): void
+    {
+        $this->closeOpenReview($externalId, $releaseId, 'Automatisch zugeordnet: über UPC oder vorhandene Verknüpfung (Deezer)');
+    }
+
+    /** Closes an open review for this album or records the automatic link so it can be traced. */
+    private function resolveReview(string $externalId, int $candidateId, array $album, string $reason): void
+    {
+        if ($this->closeOpenReview($externalId, $candidateId, $reason)) {
+            return;
+        }
+        $this->db->exec(
+            'INSERT IGNORE INTO import_reviews (provider, external_id, candidate_release_id, payload_json, reason, status, created_at) VALUES ("deezer",?,?,?,?,"merged",NOW())',
+            [$externalId, $candidateId, json_encode($album, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $reason]
+        );
+    }
+
+    /** Marks the open review of this album as merged; returns false when there was none. */
+    private function closeOpenReview(string $externalId, int $releaseId, string $reason): bool
+    {
+        $open = $this->db->one("SELECT id FROM import_reviews WHERE provider='deezer' AND external_id=? AND status='open'", [$externalId]);
+        if (!$open) {
+            return false;
+        }
+        // (provider, external_id, status) is unique: when a merged row already exists, the open one is simply dropped.
+        $merged = $this->db->one("SELECT id FROM import_reviews WHERE provider='deezer' AND external_id=? AND status='merged'", [$externalId]);
+        if ($merged) {
+            $this->db->exec('DELETE FROM import_reviews WHERE id=?', [$open['id']]);
+        } else {
+            $this->db->exec("UPDATE import_reviews SET status='merged', candidate_release_id=?, reason=? WHERE id=?", [$releaseId, $reason, $open['id']]);
+        }
+        return true;
     }
 
     /** Artist key that ignores a leading "The". */
@@ -429,9 +519,26 @@ final class Sync
         return normalize_match_key($name);
     }
 
-    /** Title key that also ignores bracketed additions and EP/Single/Edit suffixes. Only used to propose reviews. */
-    private function looseKey(string $title): string
+    /** Drops a leading "<artist> - " that some shops put into the title. */
+    private function withoutArtistPrefix(string $title, string $artistName): string
     {
+        $artistKey = $this->artistKey($artistName);
+        if ($artistKey !== '' && preg_match('/^(.+?)\s+[-–:|]\s+(.+)$/u', trim($title), $m) && $this->artistKey($m[1]) === $artistKey) {
+            return $m[2];
+        }
+        return $title;
+    }
+
+    /** Title key for automatic linking: case, punctuation, accents, " - Single" and an artist prefix do not matter. */
+    private function strictKey(string $title, string $artistName): string
+    {
+        return normalize_match_key($this->withoutArtistPrefix($title, $artistName));
+    }
+
+    /** Title key that also ignores bracketed additions and EP/Single/Edit suffixes. Only used to propose reviews. */
+    private function looseKey(string $title, string $artistName = ''): string
+    {
+        $title = $this->withoutArtistPrefix($title, $artistName);
         $title = preg_replace('/\s*[\(\[].*?[\)\]]/u', '', $title) ?? $title;
         $title = preg_replace('/\s*[-–:]?\s*\b(ep|single|radio edit|remastered|deluxe)\b\s*$/iu', '', $title) ?? $title;
         return normalize_match_key($title);

@@ -128,13 +128,13 @@ Der Katalog behauptet keine Vollständigkeit. Er ist das bisherige Archiv plus d
 
 ## Quellen: Discogs, Deezer, Apple Music und eigene Daten
 
-`php bin/sync-releases.php` geht in einem Lauf alle Quellen durch: Discogs, dann Deezer, dann die Apple-Music-Verknüpfung. Jede Quelle hat ihre eigene Fehlerbehandlung; `--source=discogs|deezer|apple` beschränkt den Lauf auf eine. Für alle gilt: nur Releases mit dem Label aus der Allow-Liste, UPC verknüpft ein vorhandenes Release, gleicher Künstler und Titel landet in `import_reviews` und wird im Admin bestätigt, redaktionell gesperrte Felder bleiben unangetastet, es wird nie gelöscht.
+`php bin/sync-releases.php` geht in einem Lauf alle Quellen durch: Discogs, dann Deezer, dann die Apple-Music-Verknüpfung. Jede Quelle hat ihre eigene Fehlerbehandlung; `--source=discogs|deezer|apple` beschränkt den Lauf auf eine. Für alle gilt: nur Releases mit dem Label aus der Allow-Liste, UPC verknüpft ein vorhandenes Release; derselbe Künstler mit demselben Titel (Groß-/Kleinschreibung, Satzzeichen, Akzente, ein „ - Single“-Zusatz und ein vorangestellter Künstlername im Titel zählen nicht) wird automatisch verknüpft und als erledigter Prüffall protokolliert; nur unscharfe oder mehrdeutige Treffer landen offen in `import_reviews` und werden im Admin entschieden; redaktionell gesperrte Felder bleiben unangetastet, es wird nie gelöscht. Ein erneuter Archiv-Import (`bin/install.php --import`) setzt Datum, Typ und Tracks, die ein Anbieterlauf ergänzt hat, nicht zurück.
 
 ### Deezer
 
 Deezer führt jede digital vertriebene Veröffentlichung mit Labelname, UPC, exaktem Datum, Typ (Single, EP, Album), Tracks mit ISRC und einem großen Cover. Die öffentliche API braucht keine Zugangsdaten; der Adapter hält etwa sieben Anfragen pro Sekunde ein. Gesucht wird `label:"BleedingStar Records"` (`deezer.label_names`, Standard sind die Discogs-Labelnamen); jedes Album wird einzeln geladen und nur übernommen, wenn das Feld `label` exakt passt.
 
-Ein per UPC oder Prüffall verknüpftes Release bekommt, was ihm fehlt: das genaue Datum, wenn bisher nur das Jahr bekannt war (und das Jahr übereinstimmt), den Typ, die Tracks samt ISRC, das Format „Digital“ mit UPC, den Deezer-Link und ein Cover nur dann, wenn noch keines da ist. Beim Titelvergleich werden Klammerzusätze und Endungen wie „EP“, „Single“ oder „Radio Edit“ ignoriert, ein führendes „The“ beim Künstler ebenfalls, das führt aber nur zum Prüffall, nie zur automatischen Zusammenführung. Zwei Deezer-Alben sind nie dasselbe Release.
+Ein per UPC oder Prüffall verknüpftes Release bekommt, was ihm fehlt: das genaue Datum, wenn bisher nur das Jahr bekannt war (und das Jahr übereinstimmt), den Typ, die Tracks samt ISRC, das Format „Digital“ mit UPC, den Deezer-Link und ein Cover nur dann, wenn noch keines da ist. Exakt gleicher Künstler und Titel (siehe oben; ein führendes „The“ beim Künstler zählt nicht) wird automatisch verknüpft. Werden zusätzlich Klammerzusätze und Endungen wie „EP“, „Single“ oder „Radio Edit“ ignoriert und passt es erst dann („High Tension (In Stereo)“ zu „High Tension“, „Pandemia EP“ zu „Pandemia“), entsteht nur ein Prüffall. Ebenso, wenn dem Release schon ein anderes Deezer-Album zugeordnet ist: Zwei Deezer-Alben sind nie dasselbe Release.
 
 Cover landen unter `storage/uploads/covers/deezer/` (die CDN liefert bei Anfrage von 1800 px die größte vorhandene Datei, meist 1200 oder 1400 px), kleinere Rasterdateien entstehen wie bei Discogs. Genres aus Deezer erscheinen auf der Release-Seite.
 
@@ -144,7 +144,7 @@ Für jedes Release mit UPC, das noch keinen Apple-Link hat, fragt der Lauf die i
 
 ### Discogs
 
-Der Adapter spricht nur `https://api.discogs.com` an. Die Label-ID ist **316841**. Ein Release wird nur übernommen, wenn ein Label aus `allow_label_ids` oder `allow_label_names` daran hängt. Gleicher Titel allein führt nicht zusammen. Dieselbe normalisierte Kombination aus Künstler und Titel landet in `import_reviews`. Eine UPC kann ein vorhandenes Release verknüpfen. Mehrere Discogs-Ausgaben mit derselben Master-ID werden eine Kachel plus Zeilen in `release_formats`.
+Der Adapter spricht nur `https://api.discogs.com` an. Die Label-ID ist **316841**. Ein Release wird nur übernommen, wenn ein Label aus `allow_label_ids` oder `allow_label_names` daran hängt. Gleicher Titel allein führt nicht zusammen. Dieselbe normalisierte Kombination aus Künstler und Titel wird mit dem einen passenden Archiv-Release verknüpft; passen mehrere, entsteht ein Prüffall. Eine UPC kann ein vorhandenes Release verknüpfen. Mehrere Discogs-Ausgaben mit derselben Master-ID werden eine Kachel plus Zeilen in `release_formats`.
 
 Ohne Token liegt der Abstand bei 2,5 Sekunden (unter dem öffentlichen Richtwert von etwa 25 Anfragen pro Minute). Mit Token bei 1,05 Sekunden. `429` mit `Retry-After` wird begrenzt wiederholt. `429` ohne `Retry-After` gilt als erschöpftes Kontingent und beendet den Lauf mit Exit-Code 3. Ein leerer oder fehlgeschlagener Abruf löscht keine vorhandenen Releases.
 
@@ -200,7 +200,7 @@ Zeitbudget: Jede Quelle hört von sich aus auf, neue Einträge anzufassen, sobal
 
 `/admin` verlangt ein Passwort aus `password_hash`. Acht Fehlversuche pro IP innerhalb von 15 Minuten werden abgewiesen. Formulare nutzen CSRF-Tokens. Sessions heißen `bsid`, sind HttpOnly und SameSite=Lax, bei HTTPS zusätzlich Secure.
 
-Pflegbar sind Release-Status, Hervorhebung, Künstlerzuordnung, Cover-Upload, Streaming-Links, Künstlertexte, die Seiten Label und Production sowie die Mietartikel. Speichern setzt `editorial_locked`, damit der nächste Import diese Felder nicht leert. Unsichere Discogs-Treffer liegen unter Prüfung.
+Pflegbar sind Release-Status, Hervorhebung, Künstlerzuordnung, Cover-Upload, Streaming-Links, Künstlertexte, die Seiten Label und Production sowie die Mietartikel. Speichern setzt `editorial_locked`, damit der nächste Import diese Felder nicht leert. Unscharfe oder mehrdeutige Treffer der Quellen liegen unter Prüfung.
 
 ## Kontakt, Rental, Rechtliches
 
