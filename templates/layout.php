@@ -18,7 +18,7 @@ $nav = [
     'releases' => ['Releases', '/releases'],
     'artists' => ['Artists', '/artists'],
     'label' => ['Label', '/label'],
-    'production' => ['Production', '/production'],
+    'production' => ['Production', 'https://www.reichi.com/'],
     'rental' => ['Rental', '/rental'],
     'projekte' => ['Projekte', '/#projekte'],
 ];
@@ -74,7 +74,8 @@ $nav = [
       <nav class="nav site-nav" id="site-nav" aria-label="Hauptnavigation">
         <ul class="nav__list">
           <?php foreach ($nav as $key => [$label, $href]): ?>
-            <li><a <?= $current === $key ? 'aria-current="page"' : '' ?> href="<?= e($href) ?>"><?= e($label) ?></a></li>
+            <?php $external = str_starts_with($href, 'http'); ?>
+            <li><a <?= !$external && $current === $key ? 'aria-current="page"' : '' ?> href="<?= e($href) ?>"<?= $external ? ' rel="noopener noreferrer" target="_blank"' : '' ?>><?= e($label) ?></a></li>
           <?php endforeach; ?>
         </ul>
         <a class="btn btn-small nav__cta<?= $current === 'kontakt' ? ' is-current' : '' ?>" href="/kontakt">Anfrage</a>
@@ -108,7 +109,7 @@ $nav = [
       <h2 class="site-footer__heading">Services</h2>
       <ul class="site-footer__links">
         <li><a href="/label">Label</a></li>
-        <li><a href="/production">Production</a></li>
+        <li><a href="https://www.reichi.com/" rel="noopener noreferrer" target="_blank">Production</a></li>
         <li><a href="/rental">Rental</a></li>
         <li><a href="/kontakt">Anfrage</a></li>
       </ul>
