@@ -60,6 +60,17 @@ $projects = [
         'height' => 186,
         'text' => 'Livestream-Produktion: Mehrkamera, Bildregie und Übertragung für Konzerte und Events.',
     ],
+    [
+        'id' => 'vinyl-codes',
+        'name' => 'vinyl.codes',
+        'host' => 'vinyl.codes',
+        'href' => 'https://vinyl.codes/',
+        'logo' => '/assets/img/logos/vinyl-codes.png',
+        'width' => 448,
+        'height' => 274,
+        'wide' => true,
+        'text' => 'Download-Code-Plattform für Vinyl-Releases. Ein Code stellt die digitalen Daten zu einem physischen Vinyl-Release bereit.',
+    ],
 ];
 ?>
 <?php if ($featured): ?>
@@ -228,7 +239,7 @@ $projects = [
     </header>
     <ul class="projects__list">
       <?php foreach ($projects as $project): ?>
-        <li class="projects__item" id="<?= e($project['id']) ?>">
+        <li class="projects__item<?= !empty($project['wide']) ? ' projects__item--wide' : '' ?>" id="<?= e($project['id']) ?>">
           <a class="projects__link" href="<?= e($project['href']) ?>" rel="noopener noreferrer" target="_blank">
             <span class="projects__logo">
               <?php if ($project['id'] === 'reichi-com'): ?>

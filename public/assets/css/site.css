@@ -717,16 +717,35 @@ main:focus { outline: none; }
   color: var(--accent-ink);
 }
 .projects__icon { width: 1em; height: 1em; flex: none; }
+/* Zweite Zeile über die volle Breite (vinyl.codes): Logo groß, Text daneben. */
+.projects__item--wide { grid-column: 1 / -1; }
+.projects__item--wide .projects__link {
+  grid-template-columns: minmax(12rem, 1.45fr) minmax(16rem, 1fr);
+  align-items: center;
+}
+.projects__item--wide .projects__logo img { width: 100%; max-width: none; }
 @media (min-width: 48em) {
   .projects__list { grid-template-columns: 1fr 1fr; }
+  .projects__list:has(> .projects__item--wide) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .projects__list:has(> .projects__item--wide) > :not(.projects__item--wide) .projects__link {
+    grid-template-columns: 1fr;
+    align-content: start;
+  }
 }
 @media (min-width: 64em) {
   .projects__list:has(> li:nth-child(3)) { grid-template-columns: repeat(3, 1fr); }
-  .projects__list:has(> li:nth-child(3)) .projects__link { grid-template-columns: 1fr; align-content: start; }
+  .projects__list:has(> li:nth-child(3)) > :not(.projects__item--wide) .projects__link {
+    grid-template-columns: 1fr;
+    align-content: start;
+  }
+}
+@media (max-width: 40em) {
+  .projects__item--wide .projects__link { grid-template-columns: 1fr; }
 }
 @media (max-width: 30em) {
   .projects__link { grid-template-columns: 1fr; }
   .projects__logo img { max-width: 9rem; }
+  .projects__item--wide .projects__logo img { max-width: none; }
 }
 
 .hire { background: linear-gradient(to bottom, var(--bg), var(--bg-2)); }
