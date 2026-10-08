@@ -5,7 +5,7 @@
     <li><?= (int) $counts['artists'] ?> Künstler</li>
     <li><?= (int) $counts['reviews'] ?> offene Prüffälle</li>
   </ul>
-  <p><a href="/admin/pages/label">Labeltext</a></p>
+  <p><a href="/admin/pages">Texte</a></p>
   <h2>Umgebung</h2>
   <ul class="lined">
     <li><span>PHP</span><span><?= e(PHP_VERSION) ?> (<?= e(PHP_SAPI) ?>)</span></li>

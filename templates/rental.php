@@ -2,7 +2,7 @@
   <div class="wrap">
     <header class="section__head">
       <p class="eyebrow">Music Services</p>
-      <h1 class="section__title">Rental</h1>
+      <h1 class="section__title"><?= e(trim((string) ($page['title'] ?? '')) !== '' ? (string) $page['title'] : 'Rental') ?></h1>
     </header>
     <div class="prose-page__body">
       <div class="prose"><?= $page['body_html'] ?? '<p>Beschreibung noch zu ergänzen.</p>' ?></div>

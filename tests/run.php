@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
 use App\CatalogRepository;
 use App\Database;
 use App\Discogs\Client;
@@ -769,6 +773,43 @@ foreach ([$sharedId, $sideOnlyId, $orphanId] as $dropId) {
     $db->exec('DELETE FROM releases WHERE id = ?', [$dropId]);
 }
 $db->exec('DELETE FROM artists WHERE id IN (?, ?)', [$leadId, $sideId]);
+
+$labelBefore = $db->one("SELECT title, body_html FROM pages WHERE slug = 'label'");
+$rentalBefore = $db->one("SELECT title, body_html FROM pages WHERE slug = 'rental'");
+$db->exec("DELETE FROM pages WHERE slug = 'rental'");
+$editor = $adminView->textEditor();
+$editorSlugs = array_column($editor, 'slug');
+check($editorSlugs === ['label', 'rental'], 'text editor lists label and rental');
+check(($editor[1]['body_html'] ?? 'missing') === '', 'a missing rental page still has an empty text field');
+$adminView->saveTexts([
+    'label' => ['title' => 'Label gehalten', 'body_html' => '<p>Label bleibt</p><script>alert(1)</script>'],
+    'rental' => ['title' => 'Equipment', 'body_html' => '<p>High End recording.</p>'],
+    'production' => ['title' => 'Production', 'body_html' => '<p>soll nicht entstehen</p>'],
+]);
+$savedLabel = $db->one("SELECT title, body_html FROM pages WHERE slug = 'label'");
+$savedRental = $db->one("SELECT title, body_html FROM pages WHERE slug = 'rental'");
+check(
+    $savedLabel['title'] === 'Label gehalten' && $savedLabel['body_html'] === '<p>Label bleibt</p>' && !str_contains($savedLabel['body_html'], 'script'),
+    'label text is saved and script is stripped'
+);
+check($savedRental['title'] === 'Equipment' && $savedRental['body_html'] === '<p>High End recording.</p>', 'rental page text can be created from the editor');
+check($db->one("SELECT 1 FROM pages WHERE slug = 'production'") === null, 'the text editor does not recreate production');
+$pages = $adminView->textEditor();
+ob_start();
+include app_root() . '/templates/admin/pages.php';
+$textsHtml = (string) ob_get_clean();
+check(
+    str_contains($textsHtml, 'name="pages[label][body_html]"') && str_contains($textsHtml, 'name="pages[rental][body_html]"') && str_contains($textsHtml, 'High End recording.'),
+    'the Texte form has a field for the label text and the rental text'
+);
+if ($labelBefore) {
+    $db->exec('UPDATE pages SET title = ?, body_html = ? WHERE slug = ?', [$labelBefore['title'], $labelBefore['body_html'], 'label']);
+}
+if ($rentalBefore) {
+    $db->exec('UPDATE pages SET title = ?, body_html = ? WHERE slug = ?', [$rentalBefore['title'], $rentalBefore['body_html'], 'rental']);
+} else {
+    $db->exec("DELETE FROM pages WHERE slug = 'rental'");
+}
 
 echo $failed === 0 ? "ALL PASSED\n" : "$failed FAILED\n";
 exit($failed === 0 ? 0 : 1);

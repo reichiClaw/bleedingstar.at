@@ -63,7 +63,7 @@ $nav = [
           <li><a href="/admin/rental">Rental</a></li>
           <li><a href="/admin/reviews">Prüfung</a></li>
           <li><a href="/admin/sync">Sync</a></li>
-          <li><a href="/admin/pages/label">Texte</a></li>
+          <li><a href="/admin/pages">Texte</a></li>
           <li><a href="/">Website</a></li>
         </ul>
         <?php if (!empty($adminUser)): ?>
