@@ -69,8 +69,8 @@ $projects = [
         'width' => 448,
         'height' => 274,
         'wide' => true,
-        'text' => 'Download-Code-Plattform für Vinyl-Releases. Ein Code stellt die digitalen Daten zu einem physischen Vinyl-Release bereit. Das steht für alle Releases zur Verfügung.',
-        'inquiry' => ['href' => '/kontakt?thema=vinyl.codes', 'label' => 'Anfrage'],
+        'text' => 'Download-Code-Plattform für Vinyl-Releases. Ein Code stellt die digitalen Daten zu einem physischen Vinyl-Release bereit. Wenn du für dein nächstes Vinyl Projekt solche Codes verwenden möchtest, melde dich einfach bei mir.',
+        'inquiry' => ['href' => '/kontakt?thema=vinyl.codes', 'label' => 'Vinyl Codes Anfragen'],
     ],
 ];
 ?>
@@ -253,7 +253,7 @@ $projects = [
                   <span class="projects__text"><?= e($project['text']) ?></span>
                   <span class="projects__url"><?= e($project['host']) ?> <svg class="projects__icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></span>
                 </a>
-                <a class="projects__inquiry" href="<?= e($inquiry['href']) ?>"><?= e($inquiry['label']) ?> <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+                <a class="projects__inquiry btn btn-accent" href="<?= e($inquiry['href']) ?>"><?= e($inquiry['label']) ?> <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
               </div>
             </div>
           <?php else: ?>

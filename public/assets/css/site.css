@@ -724,17 +724,7 @@ main:focus { outline: none; }
   text-decoration: none;
 }
 .projects__main:hover { text-decoration: none; }
-.projects__inquiry {
-  justify-self: start;
-  margin-top: 0.85rem;
-  font-family: var(--font-mono);
-  font-size: var(--step--1);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  text-decoration: none;
-  color: var(--accent-ink);
-}
-.projects__inquiry:hover { color: var(--ink); text-decoration: none; }
+.projects__inquiry { justify-self: start; margin-top: 1rem; }
 /* Zweite Zeile über die volle Breite (vinyl.codes): Logo groß, Text daneben. */
 .projects__item--wide { grid-column: 1 / -1; }
 .projects__item--wide .projects__link {
