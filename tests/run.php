@@ -641,6 +641,8 @@ $db->exec("INSERT INTO events (title) VALUES ('gig')");
 $db->exec('CREATE TABLE IF NOT EXISTS documents (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, title VARCHAR(200) NOT NULL)');
 $db->exec("INSERT INTO documents (title) VALUES ('rider'), ('logo'), ('presse')");
 $db->exec("INSERT INTO pages (slug, title, body_html, updated_at) VALUES ('radio', 'Radio', '<p>alt</p>', NOW()) ON DUPLICATE KEY UPDATE title = VALUES(title)");
+$db->exec("INSERT INTO pages (slug, title, body_html, updated_at) VALUES ('production', 'Production', '<p>alt</p>', NOW()) ON DUPLICATE KEY UPDATE title = VALUES(title)");
+$db->exec("INSERT INTO redirects (source_path, target_path) VALUES ('/test-legacy-service', '/production') ON DUPLICATE KEY UPDATE target_path = VALUES(target_path)");
 $db->exec("INSERT INTO redirects (source_path, target_path) VALUES ('/test-legacy-news', '/news/alt-1'), ('/test-legacy-radio', '/radio'), ('/test-legacy-events', '/events'), ('/test-legacy-downloads', '/downloads') ON DUPLICATE KEY UPDATE target_path = VALUES(target_path)");
 $db->exec("INSERT INTO redirects (source_path, target_path) VALUES ('/test-legacy-keep', '/releases') ON DUPLICATE KEY UPDATE target_path = VALUES(target_path)");
 $dryStats = $installer->removeLegacyContent(true);
@@ -660,11 +662,13 @@ check(
 check($db->pdo()->query("SHOW TABLES LIKE 'news'")->fetch() === false, 'news table is dropped');
 check($db->pdo()->query("SHOW TABLES LIKE 'events'")->fetch() === false && $db->pdo()->query("SHOW TABLES LIKE 'documents'")->fetch() === false, 'events and documents tables are dropped');
 check($db->one("SELECT 1 FROM pages WHERE slug = 'radio'") === null, 'radio page is deleted');
+check($db->one("SELECT 1 FROM pages WHERE slug = 'production'") === null, 'production page is deleted');
+check(($db->one("SELECT target_path FROM redirects WHERE source_path = '/test-legacy-service'")['target_path'] ?? '') === 'https://www.reichi.com/', 'production redirects point at reichi.com');
 check($db->one("SELECT 1 FROM redirects WHERE source_path IN ('/test-legacy-news', '/test-legacy-radio', '/test-legacy-events', '/test-legacy-downloads')") === null, 'news, radio, events and downloads redirects are deleted');
 check($db->one("SELECT 1 FROM redirects WHERE source_path = '/test-legacy-keep'") !== null, 'other redirects survive');
 $againStats = $installer->removeLegacyContent(false);
 check($againStats['errors'] === 0 && $againStats['updated'] === 0 && str_contains($againStats['message'], 'bereits entfernt'), 'second run is a no-op');
-$db->exec("DELETE FROM redirects WHERE source_path = '/test-legacy-keep'");
+$db->exec("DELETE FROM redirects WHERE source_path IN ('/test-legacy-keep', '/test-legacy-service')");
 
 // --- Admin release overview: grouped by lead artist, filters --------------
 $adminView = new App\Admin(app_config(), $db, new App\Auth($db));

@@ -47,7 +47,7 @@ final class Web
             $method === 'GET' && $head === 'releases' && isset($parts[1]) => $this->release($parts[1]),
             $method === 'GET' && $path === '/artists' => $this->artists(),
             $method === 'GET' && $head === 'artists' && isset($parts[1]) => $this->artist($parts[1]),
-            $method === 'GET' && $path === '/production' => $this->page('production', 'Production', 'production'),
+            $method === 'GET' && $path === '/production' => $this->redirectExternal('https://www.reichi.com/'),
             $method === 'GET' && $path === '/rental' => $this->rental(),
             $method === 'GET' && $head === 'rental' && isset($parts[1]) => $this->rentalItem($parts[1]),
             $method === 'POST' && $path === '/rental/cart' => $this->rentalCart(),
@@ -83,7 +83,6 @@ final class Web
             'total' => $this->catalog->count(),
             'artists' => $this->catalog->artistsWithReleases(),
             'label' => $this->content->page('label'),
-            'production' => $this->content->page('production'),
             'rental' => $this->content->page('rental'),
             'ogImage' => $featured ? ($this->catalog->cover($featured)['url'] ?? null) : null,
         ]);
@@ -161,7 +160,6 @@ final class Web
             'description' => ($page['title'] ?? $fallback) . ' – BleedingStar.',
             'current' => $current,
             'page' => $page,
-            'cta' => $slug === 'production',
         ]);
     }
 
@@ -329,7 +327,7 @@ final class Web
     private function sitemap(): void
     {
         $base = rtrim($this->config['base_url'], '/');
-        $urls = ['/', '/label', '/releases', '/artists', '/production', '/rental', '/kontakt', '/impressum', '/datenschutz'];
+        $urls = ['/', '/label', '/releases', '/artists', '/rental', '/kontakt', '/impressum', '/datenschutz'];
         foreach (app_db()->all("SELECT slug FROM releases WHERE status = 'published'") as $row) {
             $urls[] = '/releases/' . $row['slug'];
         }
@@ -464,6 +462,11 @@ final class Web
             default => 500,
         });
         echo $result['line'];
+    }
+
+    private function redirectExternal(string $url): void
+    {
+        header('Location: ' . $url, true, 301);
     }
 
     private function notFound(): void

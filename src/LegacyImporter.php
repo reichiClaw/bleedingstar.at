@@ -190,18 +190,11 @@ final class LegacyImporter
 
     private function importPages(array $data): void
     {
-        $service = null;
-        foreach ($data['pages'] as $page) {
-            if ($page['slug'] === 'service' && $page['status'] === 'publish') {
-                $service = Html::wordpress($page['content']);
-            }
-        }
         $label = '<p>BleedingStar ist das Label von Christian Reichinger. Im bisherigen Auftritt firmiert es als BleedingStar Music Services, Maria Aich 3, 4971 Aurolzmünster.</p>'
             . '<p>Neben dem Label- und Publishing-Service arbeitet er als Live-Tontechniker und Tourmanager.</p>'
             . '<p>Künstler sind im Archiv mit den Zuordnungen Vertrieb, Booking und Managing geführt. Ein längerer Labeltext ist dort nicht hinterlegt.</p>';
         $this->upsertPage('label', 'Label', $label);
-        $this->upsertPage('production', 'Production', $service ?: '<p>Beschreibung noch zu ergänzen.</p>');
-        $this->db->exec("DELETE FROM pages WHERE slug = 'radio'");
+        $this->db->exec("DELETE FROM pages WHERE slug IN ('radio', 'production')");
     }
 
     private function importRental(array $data): void
@@ -233,8 +226,8 @@ final class LegacyImporter
     {
         $map = [
             '/contact' => '/kontakt',
-            '/service' => '/production',
-            '/services' => '/production',
+            '/service' => 'https://www.reichi.com/',
+            '/services' => 'https://www.reichi.com/',
             '/newsletter' => '/kontakt',
             '/redeem' => '/kontakt',
             '/startseite' => '/',
