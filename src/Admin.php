@@ -42,6 +42,8 @@ final class Admin
             $method === 'GET' && $head === 'artists' && !isset($parts[1]) => $this->artists(),
             $method === 'GET' && $head === 'artists' && isset($parts[1]) => $this->artistForm((int) $parts[1]),
             $method === 'POST' && $head === 'artists' && isset($parts[1]) => $this->artistSave((int) $parts[1]),
+            $method === 'GET' && $head === 'pages' && !isset($parts[1]) => $this->texts(),
+            $method === 'POST' && $head === 'pages' && !isset($parts[1]) => $this->textsSave(),
             $method === 'GET' && $head === 'pages' && isset($parts[1]) => $this->pageForm($parts[1]),
             $method === 'POST' && $head === 'pages' && isset($parts[1]) => $this->pageSave($parts[1]),
             $method === 'GET' && $head === 'rental' && !isset($parts[1]) => $this->rental(),
@@ -360,27 +362,88 @@ final class Admin
         header('Location: /admin/artists/' . $id, true, 303);
     }
 
+    /** @var array<string, string> */
+    private const TEXT_PAGES = [
+        'label' => 'Label',
+        'rental' => 'Rental',
+    ];
+
+    /**
+     * @return list<array{slug: string, label: string, title: string, body_html: string}>
+     */
+    public function textEditor(): array
+    {
+        $pages = [];
+        foreach (self::TEXT_PAGES as $slug => $label) {
+            $row = $this->db->one('SELECT title, body_html FROM pages WHERE slug = ?', [$slug]);
+            $pages[] = [
+                'slug' => $slug,
+                'label' => $label,
+                'title' => (string) ($row['title'] ?? $label),
+                'body_html' => (string) ($row['body_html'] ?? ''),
+            ];
+        }
+        return $pages;
+    }
+
+    /** @param array<string, mixed> $input */
+    public function saveTexts(array $input): void
+    {
+        foreach (self::TEXT_PAGES as $slug => $label) {
+            $item = $input[$slug] ?? null;
+            if (!is_array($item)) {
+                continue;
+            }
+            $title = trim((string) ($item['title'] ?? ''));
+            if ($title === '') {
+                $title = $label;
+            }
+            if (mb_strlen($title) > 190) {
+                $title = mb_substr($title, 0, 190);
+            }
+            $body = Html::clean((string) ($item['body_html'] ?? ''));
+            $this->db->exec(
+                'INSERT INTO pages (slug, title, body_html, updated_at) VALUES (?,?,?,NOW())
+                 ON DUPLICATE KEY UPDATE title = VALUES(title), body_html = VALUES(body_html), updated_at = NOW()',
+                [$slug, $title, $body]
+            );
+        }
+    }
+
+    private function texts(): void
+    {
+        $this->render('admin/pages', ['pages' => $this->textEditor(), 'title' => 'Texte']);
+    }
+
+    private function textsSave(): void
+    {
+        $posted = $_POST['pages'] ?? [];
+        $this->saveTexts(is_array($posted) ? $posted : []);
+        header('Location: /admin/pages', true, 303);
+    }
+
     private function pageForm(string $slug): void
     {
-        if ($slug !== 'label') {
+        if (!isset(self::TEXT_PAGES[$slug])) {
             $this->missing();
             return;
         }
-        $row = $this->db->one('SELECT * FROM pages WHERE slug = ?', [$slug]);
-        $this->render('admin/page', ['row' => $row, 'slug' => $slug, 'title' => $slug]);
+        header('Location: /admin/pages#' . $slug, true, 302);
     }
 
     private function pageSave(string $slug): void
     {
-        if ($slug !== 'label') {
+        if (!isset(self::TEXT_PAGES[$slug])) {
             $this->missing();
             return;
         }
-        $this->db->exec(
-            'UPDATE pages SET title=?, body_html=?, updated_at=NOW() WHERE slug=?',
-            [$this->post('title'), Html::clean($_POST['body_html'] ?? ''), $slug]
-        );
-        header('Location: /admin/pages/' . $slug, true, 303);
+        $this->saveTexts([
+            $slug => [
+                'title' => $this->post('title'),
+                'body_html' => (string) ($_POST['body_html'] ?? ''),
+            ],
+        ]);
+        header('Location: /admin/pages#' . $slug, true, 303);
     }
 
     private function rental(): void

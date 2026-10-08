@@ -166,9 +166,13 @@ final class Web
     private function rental(): void
     {
         $page = $this->content->page('rental');
+        $heading = trim((string) ($page['title'] ?? ''));
+        if ($heading === '') {
+            $heading = 'Rental';
+        }
         $this->render('rental', [
-            'title' => 'Rental',
-            'description' => 'Rental von BleedingStar.',
+            'title' => $heading,
+            'description' => $heading . ' von BleedingStar.',
             'current' => 'rental',
             'page' => $page,
         ]);
