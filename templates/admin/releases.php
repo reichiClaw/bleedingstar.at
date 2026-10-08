@@ -79,10 +79,12 @@ $groupCount = count($groups);
           <ul class="lined">
             <?php foreach ($group['releases'] as $row): ?>
               <?php
+                $type = (string) ($row['type'] ?? '');
+                $status = (string) ($row['status'] ?? '');
                 $meta = array_filter([
-                    $types[$row['type']] ?? ($row['type'] ?: ''),
+                    $types[$type] ?? $type,
                     $row['year'] ? (string) $row['year'] : '',
-                    $statuses[$row['status']] ?? $row['status'],
+                    $statuses[$status] ?? $status,
                     $row['featured'] ? 'featured' : '',
                     (string) $row['source'],
                 ]);

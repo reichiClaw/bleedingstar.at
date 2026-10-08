@@ -637,6 +637,67 @@ $drafts = $adminView->releaseOverview(['q' => $marker, 'status' => 'draft', 'typ
 check($drafts['total'] === 0, 'status, type and year filters combine');
 $albums = $adminView->releaseOverview(['q' => $marker, 'type' => 'album', 'year' => '2019']);
 check($albums['total'] === 1 && $albums['groups'][0]['name'] === $sideName, 'type and year filter the grouped list');
+$renderScript = <<<'PHP'
+<?php
+declare(strict_types=1);
+require $argv[1] . '/src/bootstrap.php';
+$payload = json_decode($argv[2], true, 512, JSON_THROW_ON_ERROR);
+$warnings = [];
+set_error_handler(static function (int $severity, string $message) use (&$warnings): bool {
+    if (($severity & (E_DEPRECATED | E_WARNING | E_USER_DEPRECATED)) !== 0) {
+        $warnings[] = $message;
+        return true;
+    }
+    return false;
+});
+$view = new App\View($argv[1] . '/templates', ['baseUrl' => 'http://localhost', 'adminUser' => null]);
+$html = $view->partial('admin/releases', $payload);
+echo json_encode([
+    'warnings' => $warnings,
+    'hasTitle' => str_contains($html, 'Ohne Typ'),
+], JSON_THROW_ON_ERROR);
+PHP;
+$renderFile = tempnam(sys_get_temp_dir(), 'bs-null-offset');
+file_put_contents((string) $renderFile, $renderScript);
+$renderPayload = json_encode([
+    'groups' => [[
+        'id' => null,
+        'name' => 'Ohne Artist',
+        'releases' => [[
+            'id' => 1,
+            'title' => 'Ohne Typ',
+            'status' => null,
+            'featured' => 0,
+            'source' => null,
+            'year' => null,
+            'type' => null,
+            'artists' => [],
+        ]],
+    ]],
+    'total' => 1,
+    'filters' => ['q' => '', 'artist' => 0, 'status' => '', 'type' => '', 'year' => 0],
+    'artists' => [],
+    'years' => [],
+], JSON_THROW_ON_ERROR);
+$renderProc = proc_open(
+    [PHP_BINARY, '-d', 'display_errors=1', '-d', 'error_reporting=E_ALL', (string) $renderFile, app_root(), $renderPayload],
+    [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+    $renderPipes
+);
+$renderOut = stream_get_contents($renderPipes[1]);
+$renderErr = stream_get_contents($renderPipes[2]);
+fclose($renderPipes[1]);
+fclose($renderPipes[2]);
+$renderCode = proc_close($renderProc);
+@unlink((string) $renderFile);
+$renderResult = json_decode($renderOut, true);
+$renderWarnings = is_array($renderResult['warnings'] ?? null) ? implode("\n", $renderResult['warnings']) : $renderErr;
+check(
+    $renderCode === 0
+    && ($renderResult['hasTitle'] ?? false) === true
+    && !str_contains($renderWarnings, 'null as an array offset'),
+    'admin overview renders a release with an empty type without a null offset: ' . $renderWarnings
+);
 foreach ([$sharedId, $sideOnlyId, $orphanId] as $dropId) {
     $db->exec('DELETE FROM releases WHERE id = ?', [$dropId]);
 }
