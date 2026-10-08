@@ -45,9 +45,6 @@ if ($release['release_date_precision'] === 'day' && $release['release_year'] && 
             <span class="ph" aria-hidden="true"><?= e(mb_substr($release['title'], 0, 1)) ?></span>
           <?php endif; ?>
         </div>
-        <?php if ($cover && $cover['external']): ?>
-          <figcaption class="attr"><?php if ($cover['page']): ?><a href="<?= e($cover['page']) ?>" rel="noopener noreferrer"><?= e($cover['attribution']) ?></a><?php else: ?><?= e($cover['attribution']) ?><?php endif; ?></figcaption>
-        <?php endif; ?>
       </figure>
       <div class="release-hero__body">
         <h1 class="release-hero__title"><?= e($release['title']) ?></h1>

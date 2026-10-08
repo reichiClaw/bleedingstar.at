@@ -134,7 +134,7 @@ $projects = [
           <?php endif; ?>
         </a>
         <figcaption class="hero__caption">
-          <span><?php if ($catalogNumber !== ''): ?><?= e($catalogNumber) ?><?php elseif ($cover && $cover['external'] && $cover['attribution']): ?><?= e($cover['attribution']) ?><?php else: ?>Cover<?php endif; ?></span>
+          <span><?= $catalogNumber !== '' ? e($catalogNumber) : 'Cover' ?></span>
           <span class="hero__caption-meta"><span class="hero__dot" aria-hidden="true"></span><?= $date !== '' ? e($date) : 'BleedingStar' ?></span>
         </figcaption>
       </figure>
