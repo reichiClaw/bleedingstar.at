@@ -67,10 +67,10 @@ final class Installer
 
     /**
      * Removes the content of the old site that the new one does not carry: the tables
-     * news, events and documents (no longer in the schema), the page 'radio' and the
-     * redirects that still pointed to /news/…, /events, /radio or /downloads. The content
-     * stays archived in data/content.json. Idempotent; returns the usual job stats with
-     * the counts in the message.
+     * news, events and documents (no longer in the schema), the pages 'radio' and
+     * 'production', and the redirects that still pointed to /news/…, /events, /radio or
+     * /downloads. Production lives on reichi.com. The content stays archived in
+     * data/content.json. Idempotent; returns the usual job stats with the counts in the message.
      */
     public function removeLegacyContent(bool $dry = false): array
     {
@@ -98,6 +98,19 @@ final class Installer
         }
         $parts[] = 'radio: ' . ($radio > 0 ? ($dry ? 'Seite würde entfernt' : 'Seite entfernt') : 'bereits entfernt');
         $removed += $radio;
+
+        $production = (int) ($this->db->one("SELECT COUNT(*) AS c FROM pages WHERE slug = 'production'")['c'] ?? 0);
+        if ($production > 0 && !$dry) {
+            $this->db->exec("DELETE FROM pages WHERE slug = 'production'");
+        }
+        $parts[] = 'production: ' . ($production > 0 ? ($dry ? 'Seite würde entfernt' : 'Seite entfernt') : 'bereits entfernt');
+        $removed += $production;
+
+        $productionRedirects = (int) ($this->db->one("SELECT COUNT(*) AS c FROM redirects WHERE target_path = '/production'")['c'] ?? 0);
+        if ($productionRedirects > 0 && !$dry) {
+            $this->db->exec("UPDATE redirects SET target_path = 'https://www.reichi.com/' WHERE target_path = '/production'");
+        }
+        $parts[] = 'production-redirects: ' . $productionRedirects . ($dry ? ' würden auf reichi.com zeigen' : ' zeigen auf reichi.com');
 
         $redirectSql = "FROM redirects WHERE target_path LIKE '/news/%' OR target_path LIKE '/events/%' OR target_path LIKE '/downloads/%'"
             . " OR target_path IN ('/news', '/events', '/radio', '/downloads')";
