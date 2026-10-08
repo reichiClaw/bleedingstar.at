@@ -18,7 +18,8 @@ $services = [
         'tag' => 'Production',
         'name' => 'Ton &amp; Tour',
         'text' => 'Live-Technik, Recording und Tourmanagement. Neben dem Label arbeitet Christian Reichinger weltweit als Tontechniker und Tourmanager.',
-        'href' => '/production',
+        'href' => 'https://www.reichi.com/',
+        'external' => true,
         'cta' => 'Leistungen ansehen',
     ],
     [
@@ -212,7 +213,7 @@ $projects = [
           </div>
           <h3 class="services__name"><?= $service['name'] ?></h3>
           <p class="services__text"><?= e($service['text']) ?></p>
-          <a class="services__link" href="<?= e($service['href']) ?>"><?= e($service['cta']) ?> <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+          <a class="services__link" href="<?= e($service['href']) ?>"<?php if (!empty($service['external'])): ?> rel="noopener noreferrer" target="_blank"<?php endif; ?>><?= e($service['cta']) ?> <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
         </li>
       <?php endforeach; ?>
     </ol>
