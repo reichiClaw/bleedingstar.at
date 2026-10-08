@@ -56,7 +56,7 @@ final class FixtureSpotify extends App\Spotify\Links
         parent::__construct($db, ['enabled' => true, 'client_id' => 'fixture-id', 'client_secret' => 'fixture-secret', 'market' => 'AT']);
     }
 
-    protected function search(string $query, int $limit, string $type = 'album'): array
+    protected function search(string $query, int $limit, string $type = 'album', bool $withMarket = true): array
     {
         $this->queries[] = $query;
         return $this->map[$query] ?? [];
@@ -81,7 +81,7 @@ final class QuotaSpotify extends App\Spotify\Links
         parent::__construct($db, ['enabled' => true, 'client_id' => 'fixture-id', 'client_secret' => 'fixture-secret']);
     }
 
-    protected function search(string $query, int $limit, string $type = 'album'): array
+    protected function search(string $query, int $limit, string $type = 'album', bool $withMarket = true): array
     {
         throw new App\Spotify\SpotifyException('Spotify quota reached, next run continues', true);
     }
@@ -531,7 +531,7 @@ $db->exec(
 $spotifyFresh = $spotifyRelease('spotify-fixture-fresh-miss', 'Fresh Miss');
 $db->exec(
     'INSERT INTO provider_records (provider, entity_type, external_id, payload_json, fetched_at) VALUES ("spotify","release",?,?,NOW())',
-    [(string) $spotifyFresh, json_encode(['matcher' => 2, 'results' => []])]
+    [(string) $spotifyFresh, json_encode(['matcher' => 3, 'results' => []])]
 );
 $spotifyAlbum = static function (string $id, string $name, string $artist, array $extra = []): array {
     return array_merge([

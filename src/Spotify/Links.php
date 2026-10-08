@@ -19,7 +19,7 @@ use App\Discogs\Covers;
  */
 class Links
 {
-    private const MATCHER = 2;
+    private const MATCHER = 3;
 
     private ?string $token = null;
 
@@ -240,10 +240,19 @@ class Links
             return $chosen;
         }
         $broad = sprintf('%s artist:"%s"', $cleanTitle, $cleanArtist);
-        if ($broad === $quoted) {
-            return null;
+        if ($broad !== $quoted) {
+            $chosen = $this->fromHits($this->search($broad, 10), $title, $artist, $row);
+            if ($chosen !== null) {
+                return $chosen;
+            }
+            // A release can be missing from the Austrian market and still have a page and artwork.
+            $chosen = $this->fromHits($this->search($broad, 10, 'album', false), $title, $artist, $row);
+            if ($chosen !== null) {
+                return $chosen;
+            }
         }
-        return $this->fromHits($this->search($broad, 10), $title, $artist, $row);
+        $byArtist = sprintf('artist:"%s"', $cleanArtist);
+        return $this->fromHits($this->search($byArtist, 10, 'album', false), $title, $artist, $row);
     }
 
     private function fromHits(array $items, string $title, string $artist, array $row): ?array
@@ -458,19 +467,22 @@ class Links
      * @return array<int, array>
      * @throws SpotifyException
      */
-    protected function search(string $query, int $limit, string $type = 'album'): array
+    protected function search(string $query, int $limit, string $type = 'album', bool $withMarket = true): array
     {
         if (!in_array($type, ['album', 'track'], true)) {
             $type = 'album';
         }
         usleep(400_000);
         $market = preg_replace('/[^A-Z]/', '', strtoupper((string) ($this->config['market'] ?? 'AT'))) ?: 'AT';
-        $url = 'https://api.spotify.com/v1/search?' . http_build_query([
+        $params = [
             'q' => $query,
             'type' => $type,
-            'market' => $market,
             'limit' => max(1, min(10, $limit)),
-        ]);
+        ];
+        if ($withMarket) {
+            $params['market'] = $market;
+        }
+        $url = 'https://api.spotify.com/v1/search?' . http_build_query($params);
         [$status, $data] = $this->request($url, $this->token());
         if ($status === 401) {
             $this->token = null;
