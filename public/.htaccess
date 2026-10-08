@@ -1,0 +1,39 @@
+AddDefaultCharset UTF-8
+IndexIgnore *
+Options -Indexes
+
+# Denied paths answer with Apache's own 403 page instead of a hoster-wide error document
+# that would route them into the front controller.
+ErrorDocument 403 default
+
+RewriteEngine On
+
+# Force https and the canonical host.
+RewriteCond %{HTTPS} !=on
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+# Application code lives next to the web root and must never be reachable.
+RedirectMatch 404 "^/(app|storage)(/|$)"
+
+# Dotfiles (including this one) are private.
+RedirectMatch 404 "/\.(?!well-known/)"
+
+# Front controller.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+RewriteRule ^ index.php [L]
+
+# Only the front controller may run as PHP. Uploads never live in this directory.
+<FilesMatch "\.(?i:php|phtml|phar|php[0-9]+)$">
+  Require all denied
+</FilesMatch>
+<Files "index.php">
+  Require all granted
+</Files>
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.(?i:css|js|woff2?|ttf|png|jpe?g|gif|webp|svg|ico)$">
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+</IfModule>

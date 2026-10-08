@@ -1,0 +1,24 @@
+# Medien der früheren WordPress-Installation. Alte Links aus Texten und Dokumenten
+# zeigen weiter hierher. Es werden nur statische Dateien ausgeliefert; PHP oder
+# andere Skripte in diesem Baum laufen nicht.
+<IfModule mod_autoindex.c>
+  IndexIgnore *
+</IfModule>
+<FilesMatch ".">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+  </IfModule>
+</FilesMatch>
+<FilesMatch "\.(?i:jpe?g|png|gif|webp|pdf|zip|mp3|wav|m4a|ogg|mp4|txt|doc|docx|xls|xlsx)$">
+  <IfModule mod_authz_core.c>
+    Require all granted
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Allow from all
+  </IfModule>
+</FilesMatch>

@@ -1,0 +1,16 @@
+/config/config.php
+/storage/logs/*
+!/storage/logs/.gitkeep
+/storage/locks/*
+!/storage/locks/.gitkeep
+/storage/cache/*
+!/storage/cache/.gitkeep
+/storage/uploads/*
+!/storage/uploads/.gitkeep
+/storage/jobs/*
+!/storage/jobs/.gitkeep
+/vendor/
+.DS_Store
+/storage/install.done
+.deploy-ftp-cache.json
+__pycache__/
