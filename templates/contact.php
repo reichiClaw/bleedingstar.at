@@ -2,7 +2,7 @@
   <div class="contact__intro">
     <p class="eyebrow">Anfrage</p>
     <h1 class="section__title">Kontakt</h1>
-    <p class="section__note">Release, Tour, Aufnahme oder Equipment: eine kurze Nachricht reicht, Rückmeldung kommt direkt.</p>
+    <p class="section__note">Release, Tour, Aufnahme, Download-Codes oder Equipment: eine kurze Nachricht reicht, Rückmeldung kommt direkt.</p>
     <address class="contact__address">
       <p><strong><?= e($identity['name']) ?></strong><br><?= e($identity['brand']) ?><br><?= e($identity['street']) ?><br><?= e($identity['postal']) ?></p>
       <p><a href="tel:<?= e($identity['phone_href']) ?>"><?= e($identity['phone']) ?></a><br>
@@ -24,7 +24,7 @@
       <p class="hp"><label>Website <input name="company_website" tabindex="-1" autocomplete="off"></label></p>
       <label>Anliegen
         <select name="topic" required>
-          <?php foreach (['label' => 'Label', 'production' => 'Production', 'rental' => 'Rental', 'allgemein' => 'Allgemeine Anfrage'] as $value => $label): ?>
+          <?php foreach (contact_topics() as $value => $label): ?>
             <option value="<?= e($value) ?>" <?= ($old['topic'] ?? '') === $value ? 'selected' : '' ?>><?= e($label) ?></option>
           <?php endforeach; ?>
         </select>

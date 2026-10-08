@@ -69,7 +69,8 @@ $projects = [
         'width' => 448,
         'height' => 274,
         'wide' => true,
-        'text' => 'Download-Code-Plattform für Vinyl-Releases. Ein Code stellt die digitalen Daten zu einem physischen Vinyl-Release bereit.',
+        'text' => 'Download-Code-Plattform für Vinyl-Releases. Ein Code stellt die digitalen Daten zu einem physischen Vinyl-Release bereit. Wenn du für dein nächstes Vinyl Projekt solche Codes verwenden möchtest, melde dich einfach bei mir.',
+        'inquiry' => ['href' => '/kontakt?thema=vinyl.codes', 'label' => 'Vinyl Codes Anfragen'],
     ],
 ];
 ?>
@@ -239,21 +240,38 @@ $projects = [
     </header>
     <ul class="projects__list">
       <?php foreach ($projects as $project): ?>
+        <?php $inquiry = $project['inquiry'] ?? null; ?>
         <li class="projects__item<?= !empty($project['wide']) ? ' projects__item--wide' : '' ?>" id="<?= e($project['id']) ?>">
-          <a class="projects__link" href="<?= e($project['href']) ?>" rel="noopener noreferrer" target="_blank">
-            <span class="projects__logo">
-              <?php if ($project['id'] === 'reichi-com'): ?>
-                <span class="projects__brand" role="img" aria-label="reichi.com"><svg class="projects__brand-mark" viewBox="0 0 100 100" width="40" height="40" aria-hidden="true" focusable="false"><g transform="translate(0,100) scale(0.1,-0.1)" fill="currentColor"><path d="M290 883 c-107 -63 -202 -118 -210 -123 -12 -7 -15 -47 -16 -242 -1 -128 1 -242 3 -254 4 -18 71 -62 248 -160 11 -6 54 -31 95 -56 41 -25 83 -44 93 -42 19 3 419 231 427 244 3 5 5 119 5 255 0 206 -3 248 -15 255 -70 45 -402 231 -417 234 -10 1 -106 -49 -213 -111z m373 -90 c83 -49 157 -94 162 -101 10 -13 14 -376 5 -385 -13 -13 -321 -187 -330 -187 -15 0 -313 172 -325 188 -6 8 -10 85 -10 192 0 147 3 183 16 195 20 21 301 184 317 184 7 1 81 -38 165 -86z"/><path d="M380 709 c-58 -34 -108 -66 -112 -72 -12 -19 -9 -265 3 -272 6 -4 13 -5 15 -2 3 3 6 56 6 119 0 62 4 121 9 130 9 18 178 118 199 118 14 0 180 -92 180 -100 0 -3 -40 -29 -90 -58 -64 -37 -90 -58 -90 -72 0 -14 29 -36 103 -79 96 -57 137 -73 137 -52 0 8 -37 37 -65 51 -49 25 -125 74 -125 80 0 4 37 30 83 56 111 65 118 77 64 108 -137 81 -184 106 -197 106 -8 0 -62 -27 -120 -61z"/></g></svg><span aria-hidden="true">reichi<span class="projects__brand-suffix">.com</span></span></span>
-              <?php else: ?>
-                <img src="<?= e($project['logo']) ?>" width="<?= e((string) $project['width']) ?>" height="<?= e((string) $project['height']) ?>" alt="<?= e($project['name']) ?>" loading="lazy" decoding="async">
-              <?php endif; ?>
-            </span>
-            <span class="projects__body">
-              <span class="projects__name"><?= e($project['name']) ?></span>
-              <span class="projects__text"><?= e($project['text']) ?></span>
-              <span class="projects__url"><?= e($project['host']) ?> <svg class="projects__icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></span>
-            </span>
-          </a>
+          <?php if ($inquiry): ?>
+            <div class="projects__link">
+              <a class="projects__logo" href="<?= e($project['href']) ?>" rel="noopener noreferrer" target="_blank" tabindex="-1" aria-hidden="true">
+                <img src="<?= e($project['logo']) ?>" width="<?= e((string) $project['width']) ?>" height="<?= e((string) $project['height']) ?>" alt="" loading="lazy" decoding="async">
+              </a>
+              <div class="projects__body">
+                <a class="projects__main" href="<?= e($project['href']) ?>" rel="noopener noreferrer" target="_blank">
+                  <span class="projects__name"><?= e($project['name']) ?></span>
+                  <span class="projects__text"><?= e($project['text']) ?></span>
+                  <span class="projects__url"><?= e($project['host']) ?> <svg class="projects__icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></span>
+                </a>
+                <a class="projects__inquiry btn btn-accent" href="<?= e($inquiry['href']) ?>"><?= e($inquiry['label']) ?> <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+              </div>
+            </div>
+          <?php else: ?>
+            <a class="projects__link" href="<?= e($project['href']) ?>" rel="noopener noreferrer" target="_blank">
+              <span class="projects__logo">
+                <?php if ($project['id'] === 'reichi-com'): ?>
+                  <span class="projects__brand" role="img" aria-label="reichi.com"><svg class="projects__brand-mark" viewBox="0 0 100 100" width="40" height="40" aria-hidden="true" focusable="false"><g transform="translate(0,100) scale(0.1,-0.1)" fill="currentColor"><path d="M290 883 c-107 -63 -202 -118 -210 -123 -12 -7 -15 -47 -16 -242 -1 -128 1 -242 3 -254 4 -18 71 -62 248 -160 11 -6 54 -31 95 -56 41 -25 83 -44 93 -42 19 3 419 231 427 244 3 5 5 119 5 255 0 206 -3 248 -15 255 -70 45 -402 231 -417 234 -10 1 -106 -49 -213 -111z m373 -90 c83 -49 157 -94 162 -101 10 -13 14 -376 5 -385 -13 -13 -321 -187 -330 -187 -15 0 -313 172 -325 188 -6 8 -10 85 -10 192 0 147 3 183 16 195 20 21 301 184 317 184 7 1 81 -38 165 -86z"/><path d="M380 709 c-58 -34 -108 -66 -112 -72 -12 -19 -9 -265 3 -272 6 -4 13 -5 15 -2 3 3 6 56 6 119 0 62 4 121 9 130 9 18 178 118 199 118 14 0 180 -92 180 -100 0 -3 -40 -29 -90 -58 -64 -37 -90 -58 -90 -72 0 -14 29 -36 103 -79 96 -57 137 -73 137 -52 0 8 -37 37 -65 51 -49 25 -125 74 -125 80 0 4 37 30 83 56 111 65 118 77 64 108 -137 81 -184 106 -197 106 -8 0 -62 -27 -120 -61z"/></g></svg><span aria-hidden="true">reichi<span class="projects__brand-suffix">.com</span></span></span>
+                <?php else: ?>
+                  <img src="<?= e($project['logo']) ?>" width="<?= e((string) $project['width']) ?>" height="<?= e((string) $project['height']) ?>" alt="<?= e($project['name']) ?>" loading="lazy" decoding="async">
+                <?php endif; ?>
+              </span>
+              <span class="projects__body">
+                <span class="projects__name"><?= e($project['name']) ?></span>
+                <span class="projects__text"><?= e($project['text']) ?></span>
+                <span class="projects__url"><?= e($project['host']) ?> <svg class="projects__icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></span>
+              </span>
+            </a>
+          <?php endif; ?>
         </li>
       <?php endforeach; ?>
     </ul>

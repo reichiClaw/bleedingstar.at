@@ -216,6 +216,11 @@ final class Web
         header('Location: ' . $back, true, 303);
     }
 
+    private function contactTopic(?string $topic): string
+    {
+        return isset(contact_topics()[$topic ?? '']) ? (string) $topic : 'allgemein';
+    }
+
     private function contact(): void
     {
         $this->render('contact', [
@@ -224,7 +229,7 @@ final class Web
             'current' => 'kontakt',
             'sent' => isset($_GET['gesendet']),
             'errors' => [],
-            'old' => ['topic' => is_string($_GET['thema'] ?? null) ? $_GET['thema'] : 'allgemein', 'name' => '', 'email' => '', 'message' => ''],
+            'old' => ['topic' => $this->contactTopic(is_string($_GET['thema'] ?? null) ? $_GET['thema'] : null), 'name' => '', 'email' => '', 'message' => ''],
             'cart' => $this->cartLines(),
             'identity' => $this->config['identity'],
         ]);
@@ -243,8 +248,8 @@ final class Web
         if ($started > 0 && (time() - $started) < 3) {
             $errors[] = 'Bitte kurz warten und dann senden.';
         }
-        $topic = $_POST['topic'] ?? '';
-        if (!in_array($topic, ['label', 'production', 'rental', 'allgemein'], true)) {
+        $topic = $this->contactTopic(is_string($_POST['topic'] ?? null) ? $_POST['topic'] : null);
+        if (!isset(contact_topics()[is_string($_POST['topic'] ?? null) ? $_POST['topic'] : ''])) {
             $errors[] = 'Bitte ein Anliegen wählen.';
         }
         $name = trim((string) ($_POST['name'] ?? ''));

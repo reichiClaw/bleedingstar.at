@@ -93,6 +93,18 @@ function normalize_match_key(string $value): string
     return $value;
 }
 
+/** @return array<string, string> */
+function contact_topics(): array
+{
+    return [
+        'label' => 'Label',
+        'production' => 'Production',
+        'rental' => 'Rental',
+        'vinyl.codes' => 'vinyl.codes',
+        'allgemein' => 'Allgemeine Anfrage',
+    ];
+}
+
 function slugify(string $value): string
 {
     $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);

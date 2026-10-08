@@ -717,6 +717,14 @@ main:focus { outline: none; }
   color: var(--accent-ink);
 }
 .projects__icon { width: 1em; height: 1em; flex: none; }
+.projects__main {
+  display: grid;
+  gap: 0.25rem;
+  color: inherit;
+  text-decoration: none;
+}
+.projects__main:hover { text-decoration: none; }
+.projects__inquiry { justify-self: start; margin-top: 1rem; }
 /* Zweite Zeile über die volle Breite (vinyl.codes): Logo groß, Text daneben. */
 .projects__item--wide { grid-column: 1 / -1; }
 .projects__item--wide .projects__link {

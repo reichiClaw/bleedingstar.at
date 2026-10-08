@@ -811,5 +811,31 @@ if ($rentalBefore) {
     $db->exec("DELETE FROM pages WHERE slug = 'rental'");
 }
 
+check(isset(contact_topics()['vinyl.codes']) && contact_topics()['vinyl.codes'] === 'vinyl.codes', 'vinyl.codes is an inquiry topic');
+$featured = null;
+$releases = [];
+$artists = [];
+$total = 0;
+$identity = ['email' => 'reichi@bleedingstar.at'];
+ob_start();
+include app_root() . '/templates/home.php';
+$homeHtml = (string) ob_get_clean();
+check(str_contains($homeHtml, 'Wenn du für dein nächstes Vinyl Projekt solche Codes verwenden möchtest, melde dich einfach bei mir.'), 'vinyl.codes invites a request for the next vinyl project');
+check(str_contains($homeHtml, 'class="projects__inquiry btn btn-accent"') && str_contains($homeHtml, 'Vinyl Codes Anfragen'), 'the vinyl.codes inquiry is an accent button');
+$homeDom = new DOMDocument();
+libxml_use_internal_errors(true);
+$homeDom->loadHTML('<?xml encoding="utf-8"?>' . $homeHtml);
+libxml_clear_errors();
+$inquiryLinks = (new DOMXPath($homeDom))->query('//a[@href="/kontakt?thema=vinyl.codes"]');
+$inquiryNested = false;
+if ($inquiryLinks->length === 1) {
+    for ($parent = $inquiryLinks->item(0)->parentNode; $parent; $parent = $parent->parentNode) {
+        if (strtolower($parent->nodeName) === 'a') {
+            $inquiryNested = true;
+        }
+    }
+}
+check($inquiryLinks->length === 1 && !$inquiryNested, 'the vinyl.codes inquiry link is its own link');
+
 echo $failed === 0 ? "ALL PASSED\n" : "$failed FAILED\n";
 exit($failed === 0 ? 0 : 1);
