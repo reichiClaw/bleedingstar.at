@@ -565,7 +565,7 @@ main:focus { outline: none; }
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.hero__caption-meta { display: inline-flex; align-items: center; gap: 0.5rem; }
+.hero__caption-meta { display: inline-flex; align-items: center; gap: 0.5rem; margin-left: auto; }
 .hero__dot {
   width: 0.5rem;
   height: 0.5rem;
