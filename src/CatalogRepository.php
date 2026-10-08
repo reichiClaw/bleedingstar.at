@@ -135,7 +135,7 @@ final class CatalogRepository
             [$row['id']]
         );
         $row['links'] = $this->db->all(
-            'SELECT label, url, provider FROM release_links WHERE release_id = ? ORDER BY id',
+            'SELECT label, url, provider FROM release_links WHERE release_id = ? ORDER BY ' . link_order_sql(),
             [$row['id']]
         );
         $row['formats'] = $this->db->all(

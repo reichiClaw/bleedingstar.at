@@ -60,6 +60,8 @@ return [
     // (Web API, Client Credentials; the redirect URI is unused) and paste its id and secret.
     // The source stays off until both values are set and enabled is true. The app owner
     // needs Spotify Premium while the app remains in development mode.
+    // Once enabled, Spotify is the preferred source for links and covers, then Apple Music,
+    // then Deezer, then Discogs. Archive covers and uploads stay.
     'spotify' => [
         'enabled' => false,
         'client_id' => '',

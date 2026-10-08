@@ -400,8 +400,7 @@ final class Sync
             return;
         }
         $row = $this->db->one('SELECT cover_path, cover_source, editorial_locked FROM releases WHERE id = ?', [$releaseId]);
-        if (!$row || !empty($row['cover_path'])) {
-            // An existing cover of any source wins; Deezer only fills gaps.
+        if (!$row || !cover_may_replace($row, 'deezer')) {
             return;
         }
         $this->db->exec(

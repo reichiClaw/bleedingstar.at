@@ -50,6 +50,37 @@ function excerpt(?string $html, int $max = 180): string
     return rtrim($cut, " ,;:-–") . ' …';
 }
 
+/**
+ * Whether a provider cover may replace the stored one.
+ * Spotify ranks above Apple Music, then Deezer, then Discogs.
+ * An uploaded or archived cover, and any cover on a locked release, stays.
+ */
+function cover_may_replace(?array $row, string $incoming): bool
+{
+    if ($row === null) {
+        return false;
+    }
+    $path = trim((string) ($row['cover_path'] ?? ''));
+    $current = (string) ($row['cover_source'] ?? '');
+    if ($path !== '' && in_array($current, ['legacy', 'upload'], true)) {
+        return false;
+    }
+    if ($path !== '' && (int) ($row['editorial_locked'] ?? 0) === 1) {
+        return false;
+    }
+    if ($path === '') {
+        return true;
+    }
+    $rank = ['spotify' => 1, 'apple' => 2, 'deezer' => 3, 'discogs' => 4];
+    return ($rank[$incoming] ?? 9) < ($rank[$current] ?? 9);
+}
+
+/** ORDER BY expression: Spotify, Apple Music, Deezer, Discogs, then everything else. */
+function link_order_sql(): string
+{
+    return "CASE provider WHEN 'spotify' THEN 1 WHEN 'apple' THEN 2 WHEN 'deezer' THEN 3 WHEN 'discogs' THEN 4 ELSE 5 END, id";
+}
+
 function normalize_match_key(string $value): string
 {
     $value = mb_strtolower(trim($value));

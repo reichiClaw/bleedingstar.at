@@ -446,11 +446,7 @@ final class Sync
             return;
         }
         $row = $this->db->one('SELECT cover_path, cover_source, editorial_locked FROM releases WHERE id = ?', [$releaseId]);
-        if (!$row) {
-            return;
-        }
-        $own = !empty($row['cover_path']) && in_array($row['cover_source'], ['legacy', 'upload'], true);
-        if ($own || ((int) $row['editorial_locked'] === 1 && !empty($row['cover_path']))) {
+        if (!$row || !cover_may_replace($row, 'discogs')) {
             return;
         }
         $this->db->exec(

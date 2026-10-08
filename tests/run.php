@@ -49,15 +49,28 @@ final class FixtureSpotify extends App\Spotify\Links
 {
     public array $queries = [];
 
+    public array $storedCovers = [];
+
     public function __construct(App\Database $db, private array $map)
     {
         parent::__construct($db, ['enabled' => true, 'client_id' => 'fixture-id', 'client_secret' => 'fixture-secret', 'market' => 'AT']);
     }
 
-    protected function search(string $query, int $limit): array
+    protected function search(string $query, int $limit, string $type = 'album'): array
     {
         $this->queries[] = $query;
         return $this->map[$query] ?? [];
+    }
+
+    protected function albumById(string $id): ?array
+    {
+        return $this->map['album:' . $id] ?? null;
+    }
+
+    protected function storeCover(int $releaseId, string $url): ?array
+    {
+        $this->storedCovers[$releaseId] = $url;
+        return ['full' => 'covers/spotify/' . $releaseId . '.jpg', 'grid' => null];
     }
 }
 
@@ -68,7 +81,12 @@ final class QuotaSpotify extends App\Spotify\Links
         parent::__construct($db, ['enabled' => true, 'client_id' => 'fixture-id', 'client_secret' => 'fixture-secret']);
     }
 
-    protected function search(string $query, int $limit): array
+    protected function search(string $query, int $limit, string $type = 'album'): array
+    {
+        throw new App\Spotify\SpotifyException('Spotify quota reached, next run continues', true);
+    }
+
+    protected function albumById(string $id): ?array
     {
         throw new App\Spotify\SpotifyException('Spotify quota reached, next run continues', true);
     }
@@ -474,52 +492,97 @@ $spotifyArtist = $db->insert(
     'INSERT INTO artists (slug, name, status, image_source, created_at, updated_at) VALUES (?, ?, "published", "legacy", NOW(), NOW())',
     ['spotify-fixture-band', 'Jünger ' . 'Fixture']
 );
-$spotifyRelease = static function (string $slug, string $title) use ($db, $spotifyArtist): int {
+$spotifyRelease = static function (string $slug, string $title, ?int $year = null, ?string $type = null) use ($db, $spotifyArtist): int {
     $id = $db->insert(
-        'INSERT INTO releases (slug, title, status, source, created_at, updated_at) VALUES (?, ?, "published", "legacy", NOW(), NOW())',
-        [$slug, $title]
+        'INSERT INTO releases (slug, title, status, source, release_year, release_type, created_at, updated_at) VALUES (?, ?, "published", "legacy", ?, ?, NOW(), NOW())',
+        [$slug, $title, $year, $type]
     );
     $db->exec('INSERT INTO release_artists (release_id, artist_id, position) VALUES (?, ?, 0)', [$id, $spotifyArtist]);
     return $id;
 };
+check(cover_may_replace(['cover_path' => 'a.jpg', 'cover_source' => 'deezer', 'editorial_locked' => 0], 'spotify'), 'spotify replaces a deezer cover');
+check(cover_may_replace(['cover_path' => 'a.jpg', 'cover_source' => 'discogs', 'editorial_locked' => 0], 'deezer'), 'deezer replaces a discogs cover');
+check(cover_may_replace(['cover_path' => 'a.jpg', 'cover_source' => 'deezer', 'editorial_locked' => 0], 'apple'), 'apple replaces a deezer cover');
+check(!cover_may_replace(['cover_path' => 'a.jpg', 'cover_source' => 'deezer', 'editorial_locked' => 0], 'discogs'), 'discogs does not replace a deezer cover');
+check(!cover_may_replace(['cover_path' => 'a.jpg', 'cover_source' => 'spotify', 'editorial_locked' => 0], 'apple'), 'apple does not replace a spotify cover');
+check(!cover_may_replace(['cover_path' => 'a.jpg', 'cover_source' => 'upload', 'editorial_locked' => 0], 'spotify'), 'an uploaded cover stays');
+check(!cover_may_replace(['cover_path' => 'a.jpg', 'cover_source' => 'deezer', 'editorial_locked' => 1], 'spotify'), 'a locked cover stays');
+check(cover_may_replace(['cover_path' => '', 'cover_source' => null, 'editorial_locked' => 0], 'discogs'), 'an empty cover is filled by discogs');
+check(App\Apple\Links::largestArtwork('https://is1-ssl.mzstatic.com/image/thumb/Music/source/100x100bb.jpg') === 'https://is1-ssl.mzstatic.com/image/thumb/Music/source/1000x1000bb.jpg', 'apple artwork asks for the 1000px file');
 $spotifyKept = $spotifyRelease('spotify-fixture-kept', 'Already Linked');
+$db->exec('INSERT INTO release_links (release_id, label, url, provider, manual) VALUES (?, "Discogs", "https://www.discogs.com/release/1", "discogs", 0)', [$spotifyKept]);
+$db->exec('INSERT INTO release_links (release_id, label, url, provider, manual) VALUES (?, "Deezer", "https://www.deezer.com/album/1", "deezer", 0)', [$spotifyKept]);
+$db->exec('INSERT INTO release_links (release_id, label, url, provider, manual) VALUES (?, "Apple Music", "https://music.apple.com/album/1", "apple", 0)', [$spotifyKept]);
 $db->exec('INSERT INTO release_links (release_id, label, url, provider, manual) VALUES (?, "Spotify", "https://open.spotify.com/album/alreadykept01", "spotify", 1)', [$spotifyKept]);
+$spotifyOrder = array_column($db->all('SELECT provider FROM release_links WHERE release_id = ? ORDER BY ' . link_order_sql(), [$spotifyKept]), 'provider');
+check($spotifyOrder === ['spotify', 'apple', 'deezer', 'discogs'], 'release links are ordered Spotify, Apple, Deezer, Discogs');
 $spotifyUpc = $spotifyRelease('spotify-fixture-upc', 'Right Now');
 $db->exec('INSERT INTO release_formats (release_id, name, upc) VALUES (?, "Digital", "012345678905")', [$spotifyUpc]);
+$db->exec('UPDATE releases SET editorial_locked = 1, cover_source = "upload", cover_path = "covers/manual.jpg" WHERE id = ?', [$spotifyUpc]);
 $spotifyTitle = $spotifyRelease('spotify-fixture-title', 'High Tension');
-$spotifyAmbiguous = $spotifyRelease('spotify-fixture-ambiguous', 'Pandemia');
-$spotifyAlbum = static fn (string $id, string $name, string $artist): array => [
-    'name' => $name,
-    'external_urls' => ['spotify' => 'https://open.spotify.com/album/' . $id . '?si=tracking'],
-    'artists' => [['name' => $artist]],
-];
+$db->exec('UPDATE releases SET cover_source = "deezer", cover_path = "covers/deezer/1.jpg" WHERE id = ?', [$spotifyTitle]);
+$spotifyAmbiguous = $spotifyRelease('spotify-fixture-ambiguous', 'Pandemia', 2019, 'single');
+$spotifyTied = $spotifyRelease('spotify-fixture-tied', 'Tied Release');
+$spotifyRetry = $spotifyRelease('spotify-fixture-retry', 'Retry Me');
+$db->exec(
+    'INSERT INTO provider_records (provider, entity_type, external_id, payload_json, fetched_at) VALUES ("spotify","release",?,?,NOW())',
+    [(string) $spotifyRetry, json_encode(['results' => []])]
+);
+$spotifyFresh = $spotifyRelease('spotify-fixture-fresh-miss', 'Fresh Miss');
+$db->exec(
+    'INSERT INTO provider_records (provider, entity_type, external_id, payload_json, fetched_at) VALUES ("spotify","release",?,?,NOW())',
+    [(string) $spotifyFresh, json_encode(['matcher' => 2, 'results' => []])]
+);
+$spotifyAlbum = static function (string $id, string $name, string $artist, array $extra = []): array {
+    return array_merge([
+        'name' => $name,
+        'external_urls' => ['spotify' => 'https://open.spotify.com/album/' . $id . '?si=tracking'],
+        'artists' => [['name' => $artist]],
+    ], $extra);
+};
 $spotify = new FixtureSpotify($db, [
-    'upc:012345678905' => [$spotifyAlbum('upc0000000000000000001', 'Right Now', 'Someone Else')],
-    'album:"High Tension" artist:"Jünger Fixture"' => [$spotifyAlbum('title000000000000000001', 'High Tension (In Stereo)', 'Junger Fixture')],
+    'upc:012345678905' => [$spotifyAlbum('upc0000000000000000001', 'Right Now', 'Someone Else', ['images' => [['url' => 'https://i.scdn.co/image/locked', 'width' => 640, 'height' => 640]]])],
+    'album:"High Tension" artist:"Jünger Fixture"' => [$spotifyAlbum('title000000000000000001', 'High Tension (In Stereo)', 'Junger Fixture', ['images' => [['url' => 'https://i.scdn.co/image/hightension', 'width' => 640, 'height' => 640]]])],
     'album:"Pandemia" artist:"Jünger Fixture"' => [
-        $spotifyAlbum('amb1000000000000000001', 'Pandemia', 'Jünger Fixture'),
-        $spotifyAlbum('amb2000000000000000002', 'Pandemia - Single', 'Junger Fixture'),
+        $spotifyAlbum('amb1000000000000000001', 'Pandemia', 'Jünger Fixture', ['album_type' => 'album', 'release_date' => '2020-01-01']),
+        $spotifyAlbum('amb2000000000000000002', 'Pandemia - Single', 'Junger Fixture', ['album_type' => 'single', 'release_date' => '2019-05-01']),
     ],
+    'album:"Tied Release" artist:"Jünger Fixture"' => [
+        $spotifyAlbum('tie1000000000000000001', 'Tied Release', 'Jünger Fixture'),
+        $spotifyAlbum('tie2000000000000000002', 'Tied Release', 'Junger Fixture'),
+    ],
+    'album:"Retry Me" artist:"Jünger Fixture"' => [$spotifyAlbum('retry000000000000000001', 'Retry Me', 'Jünger Fixture')],
 ]);
-$spotifyStats = $spotify->run(false, 5);
-check($spotifyStats['errors'] === 0 && $spotifyStats['updated'] === 2 && $spotifyStats['skipped'] === 1, 'Spotify links the UPC hit and the single exact title, and skips two exact hits: ' . $spotifyStats['message']);
+$spotifyStats = $spotify->run(false, 10);
+check($spotifyStats['errors'] === 0 && $spotifyStats['updated'] === 5 && $spotifyStats['skipped'] === 0, 'Spotify links UPC, title, the matching edition, a tie and a previous miss: ' . $spotifyStats['message']);
 $spotifyUpcUrl = $db->one('SELECT url FROM release_links WHERE release_id = ? AND provider = "spotify"', [$spotifyUpc]);
 $spotifyTitleUrl = $db->one('SELECT url FROM release_links WHERE release_id = ? AND provider = "spotify"', [$spotifyTitle]);
+$spotifyAmbiguousUrl = $db->one('SELECT url FROM release_links WHERE release_id = ? AND provider = "spotify"', [$spotifyAmbiguous]);
+$spotifyTiedUrl = $db->one('SELECT url FROM release_links WHERE release_id = ? AND provider = "spotify"', [$spotifyTied]);
 check(($spotifyUpcUrl['url'] ?? '') === 'https://open.spotify.com/album/upc0000000000000000001', 'UPC match stores the album URL without the tracking query');
 check(($spotifyTitleUrl['url'] ?? '') === 'https://open.spotify.com/album/title000000000000000001', 'title match ignores a trailing bracket, accents and a Single suffix');
-check($db->one('SELECT id FROM release_links WHERE release_id = ? AND provider = "spotify" AND manual = 0', [$spotifyAmbiguous]) === null, 'two exact Spotify hits stay unmatched');
+check(($spotifyAmbiguousUrl['url'] ?? '') === 'https://open.spotify.com/album/amb2000000000000000002', 'two exact Spotify hits: year and type pick the single');
+check(($spotifyTiedUrl['url'] ?? '') === 'https://open.spotify.com/album/tie1000000000000000001', 'two equal Spotify hits keep the first result');
+check($db->one('SELECT id FROM release_links WHERE release_id = ? AND provider = "spotify"', [$spotifyRetry]) !== null, 'a Spotify miss from the previous matcher is tried again');
+check($db->one('SELECT id FROM release_links WHERE release_id = ? AND provider = "spotify"', [$spotifyFresh]) === null, 'a miss from the current matcher stays cached for 30 days');
 check($db->one('SELECT id FROM release_links WHERE release_id = ? AND url LIKE "%alreadykept01"', [$spotifyKept]) !== null, 'an existing Spotify link is left alone');
+$spotifyTitleCover = $db->one('SELECT cover_source, cover_path FROM releases WHERE id = ?', [$spotifyTitle]);
+check(($spotifyTitleCover['cover_source'] ?? '') === 'spotify' && ($spotifyTitleCover['cover_path'] ?? '') === 'covers/spotify/' . $spotifyTitle . '.jpg', 'a Spotify image replaces the Deezer cover');
+check(($spotify->storedCovers[$spotifyTitle] ?? '') === 'https://i.scdn.co/image/hightension', 'the largest Spotify image is the one stored');
+$spotifyUpcCover = $db->one('SELECT cover_source, cover_path FROM releases WHERE id = ?', [$spotifyUpc]);
+check(($spotifyUpcCover['cover_source'] ?? '') === 'upload' && ($spotifyUpcCover['cover_path'] ?? '') === 'covers/manual.jpg', 'a locked upload is not replaced by a Spotify image');
 $spotifyQueries = $spotify->queries;
-$spotifyAgain = $spotify->run(false, 5);
+$spotifyAgain = $spotify->run(false, 10);
 check($spotifyAgain['updated'] === 0 && $spotify->queries === $spotifyQueries, 'a second Spotify run does not look the same releases up again');
-check(count($spotifyQueries) === 3, 'the first run searched UPC, title and the ambiguous pair: ' . implode(' | ', $spotifyQueries));
+check(count($spotifyQueries) === 5, 'the first run searched the retry, the tie, the pair, the title and the UPC: ' . implode(' | ', $spotifyQueries));
+$db->exec('DELETE FROM release_links WHERE release_id = ? AND provider = "spotify"', [$spotifyAmbiguous]);
 $db->exec('DELETE FROM provider_records WHERE provider = "spotify" AND entity_type = "release" AND external_id = ?', [(string) $spotifyAmbiguous]);
 $spotifyQuota = (new QuotaSpotify($db))->run(false, 1);
 check($spotifyQuota['errors'] === 1 && str_contains($spotifyQuota['message'], 'quota'), 'a Spotify quota stop ends the source without deleting links');
 check($db->one('SELECT id FROM release_links WHERE release_id = ? AND provider = "spotify"', [$spotifyTitle]) !== null, 'the quota stop keeps links already stored');
 $spotifyExpired = (new App\Spotify\Links($db, ['enabled' => true, 'client_id' => 'id', 'client_secret' => 'secret']))->run(true, 1, microtime(true) - 1);
 check($spotifyExpired['errors'] === 0 && $spotifyExpired['updated'] === 0 && str_contains($spotifyExpired['message'], 'time budget'), 'Spotify stops before the first request once the time budget is spent');
-foreach ([$spotifyKept, $spotifyUpc, $spotifyTitle, $spotifyAmbiguous] as $spotifyId) {
+foreach ([$spotifyKept, $spotifyUpc, $spotifyTitle, $spotifyAmbiguous, $spotifyTied, $spotifyRetry, $spotifyFresh] as $spotifyId) {
     $db->exec('DELETE FROM provider_records WHERE provider = "spotify" AND entity_type = "release" AND external_id = ?', [(string) $spotifyId]);
     $db->exec('DELETE FROM releases WHERE id = ?', [$spotifyId]);
 }

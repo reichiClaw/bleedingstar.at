@@ -221,7 +221,7 @@ final class Admin
         }
         $artists = $this->db->all('SELECT id, name FROM artists ORDER BY name');
         $linked = array_column($this->db->all('SELECT artist_id FROM release_artists WHERE release_id = ?', [$id]), 'artist_id');
-        $links = $this->db->all('SELECT * FROM release_links WHERE release_id = ?', [$id]);
+        $links = $this->db->all('SELECT * FROM release_links WHERE release_id = ? ORDER BY ' . link_order_sql(), [$id]);
         $this->render('admin/release', compact('row', 'artists', 'linked', 'links') + ['title' => $row['title']]);
     }
 
