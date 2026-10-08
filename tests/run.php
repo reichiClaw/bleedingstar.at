@@ -286,6 +286,8 @@ $sync->importLabel(false, 1);
 $kept = $db->one('SELECT cover_path, cover_remote_url FROM releases WHERE id=?', [$fresh['id']]);
 check($kept['cover_path'] === 'covers/manual.jpg' && $kept['cover_remote_url'] === null, 'locked cover is not replaced');
 
+$cacheStamp = $db->all("SELECT external_id, fetched_at FROM provider_records WHERE provider = 'discogs' AND entity_type = 'release' AND external_id NOT IN ('9001','9002','9003','9004','9005')");
+$db->exec("UPDATE provider_records SET fetched_at = NOW() WHERE provider = 'discogs' AND entity_type = 'release' AND external_id NOT IN ('9001','9002','9003','9004','9005')");
 $cacheFresh = $sync->refreshCache(true);
 check($cacheFresh['updated'] === 0 && $cacheFresh['errors'] === 0, 'cache refresh skips payloads the import just stored');
 $db->exec("UPDATE provider_records SET fetched_at = DATE_SUB(NOW(), INTERVAL 2 DAY) WHERE provider='discogs' AND external_id IN ('9002','9004')");
@@ -293,6 +295,12 @@ $cacheStale = $sync->refreshCache(true);
 check($cacheStale['updated'] === 2, 'cache refresh picks up payloads older than max_age_hours');
 $cacheExpired = $sync->refreshCache(true, microtime(true) - 1);
 check($cacheExpired['updated'] === 0 && str_contains($cacheExpired['message'], 'time budget'), 'cache refresh stops once the time budget is spent');
+foreach ($cacheStamp as $stamp) {
+    $db->exec(
+        "UPDATE provider_records SET fetched_at = ? WHERE provider = 'discogs' AND entity_type = 'release' AND external_id = ?",
+        [$stamp['fetched_at'], $stamp['external_id']]
+    );
+}
 
 $rotationFile = app_root() . '/storage/jobs/rotation';
 $rotationBackup = is_file($rotationFile) ? file_get_contents($rotationFile) : null;
@@ -594,6 +602,45 @@ check($db->one("SELECT 1 FROM redirects WHERE source_path = '/test-legacy-keep'"
 $againStats = $installer->removeLegacyContent(false);
 check($againStats['errors'] === 0 && $againStats['updated'] === 0 && str_contains($againStats['message'], 'bereits entfernt'), 'second run is a no-op');
 $db->exec("DELETE FROM redirects WHERE source_path = '/test-legacy-keep'");
+
+// --- Admin release overview: grouped by lead artist, filters --------------
+$adminView = new App\Admin(app_config(), $db, new App\Auth($db));
+$leadName = $marker . ' Lead';
+$sideName = $marker . ' Side';
+$leadId = $db->insert('INSERT INTO artists (slug, name, status, image_source, created_at, updated_at) VALUES (?, ?, "published", "legacy", NOW(), NOW())', [slugify($leadName) . bin2hex(random_bytes(2)), $leadName]);
+$sideId = $db->insert('INSERT INTO artists (slug, name, status, image_source, created_at, updated_at) VALUES (?, ?, "published", "legacy", NOW(), NOW())', [slugify($sideName) . bin2hex(random_bytes(2)), $sideName]);
+$adminRelease = static function (string $title, string $status, ?int $year, ?string $type) use ($db, $marker): int {
+    return $db->insert(
+        'INSERT INTO releases (slug, title, status, source, release_year, release_type, release_date_precision, created_at, updated_at) VALUES (?, ?, ?, "editorial", ?, ?, "year", NOW(), NOW())',
+        [slugify($title) . bin2hex(random_bytes(2)), $marker . ' ' . $title, $status, $year, $type]
+    );
+};
+$sharedId = $adminRelease('Shared', 'published', 2020, 'single');
+$sideOnlyId = $adminRelease('Sideonly', 'published', 2019, 'album');
+$orphanId = $adminRelease('Orphan', 'draft', null, null);
+$db->exec('INSERT INTO release_artists (release_id, artist_id, position) VALUES (?, ?, 0), (?, ?, 1)', [$sharedId, $leadId, $sharedId, $sideId]);
+$db->exec('INSERT INTO release_artists (release_id, artist_id, position) VALUES (?, ?, 0)', [$sideOnlyId, $sideId]);
+$overview = $adminView->releaseOverview(['q' => $marker]);
+$names = array_column($overview['groups'], 'name');
+check($overview['total'] === 3 && $names === [$leadName, $sideName, 'Ohne Artist'], 'admin overview groups by the first artist, uncredited last: ' . implode(' | ', $names));
+check($overview['groups'][0]['releases'][0]['title'] === $marker . ' Shared' && $overview['groups'][0]['releases'][0]['artists'] === [$leadName, $sideName], 'a shared release is listed once, under the first artist');
+$bySide = $adminView->releaseOverview(['q' => $marker, 'artist' => (string) $sideId]);
+$sideTitles = [];
+foreach ($bySide['groups'] as $group) {
+    foreach ($group['releases'] as $release) {
+        $sideTitles[] = $release['title'];
+    }
+}
+sort($sideTitles);
+check($sideTitles === [$marker . ' Shared', $marker . ' Sideonly'], 'artist filter includes releases where that artist is not first');
+$drafts = $adminView->releaseOverview(['q' => $marker, 'status' => 'draft', 'type' => 'album', 'year' => '2019']);
+check($drafts['total'] === 0, 'status, type and year filters combine');
+$albums = $adminView->releaseOverview(['q' => $marker, 'type' => 'album', 'year' => '2019']);
+check($albums['total'] === 1 && $albums['groups'][0]['name'] === $sideName, 'type and year filter the grouped list');
+foreach ([$sharedId, $sideOnlyId, $orphanId] as $dropId) {
+    $db->exec('DELETE FROM releases WHERE id = ?', [$dropId]);
+}
+$db->exec('DELETE FROM artists WHERE id IN (?, ?)', [$leadId, $sideId]);
 
 echo $failed === 0 ? "ALL PASSED\n" : "$failed FAILED\n";
 exit($failed === 0 ? 0 : 1);

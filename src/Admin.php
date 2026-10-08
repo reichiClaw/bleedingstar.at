@@ -94,8 +94,122 @@ final class Admin
 
     private function releases(): void
     {
-        $rows = $this->db->all('SELECT id, title, status, featured, source, release_year, slug FROM releases ORDER BY id DESC LIMIT 200');
-        $this->render('admin/releases', ['rows' => $rows, 'title' => 'Releases']);
+        $this->render('admin/releases', $this->releaseOverview($_GET) + ['title' => 'Releases']);
+    }
+
+    /**
+     * All releases, grouped by the first credited artist, with the admin filters applied.
+     *
+     * @return array{groups:array, total:int, filters:array, artists:array, years:array}
+     */
+    public function releaseOverview(array $query): array
+    {
+        $q = trim((string) ($query['q'] ?? ''));
+        $artist = (int) ($query['artist'] ?? 0);
+        $status = (string) ($query['status'] ?? '');
+        $type = (string) ($query['type'] ?? '');
+        $year = (int) ($query['year'] ?? 0);
+        if (!in_array($status, ['published', 'hidden', 'draft', 'pending'], true)) {
+            $status = '';
+        }
+        if (!in_array($type, ['single', 'ep', 'album', 'compilation'], true)) {
+            $type = '';
+        }
+
+        $where = [];
+        $params = [];
+        if ($q !== '') {
+            $where[] = "r.title LIKE ? ESCAPE '\\\\'";
+            $params[] = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $q) . '%';
+        }
+        if ($artist > 0) {
+            $where[] = 'EXISTS (SELECT 1 FROM release_artists ra WHERE ra.release_id = r.id AND ra.artist_id = ?)';
+            $params[] = $artist;
+        }
+        if ($status !== '') {
+            $where[] = 'r.status = ?';
+            $params[] = $status;
+        }
+        if ($type !== '') {
+            $where[] = 'r.release_type = ?';
+            $params[] = $type;
+        }
+        if ($year > 0) {
+            $where[] = 'r.release_year = ?';
+            $params[] = $year;
+        }
+
+        $rows = $this->db->all(
+            'SELECT r.id, r.title, r.status, r.featured, r.source, r.release_year, r.release_type,
+                    ra.position, a.id AS artist_id, a.name AS artist_name
+             FROM releases r
+             LEFT JOIN release_artists ra ON ra.release_id = r.id
+             LEFT JOIN artists a ON a.id = ra.artist_id
+             WHERE ' . ($where !== [] ? implode(' AND ', $where) : '1=1') . '
+             ORDER BY r.release_year IS NULL, r.release_year DESC, r.title ASC, r.id DESC, ra.position ASC, a.id ASC',
+            $params
+        );
+
+        $releases = [];
+        foreach ($rows as $row) {
+            $id = (int) $row['id'];
+            if (!isset($releases[$id])) {
+                $releases[$id] = [
+                    'id' => $id,
+                    'title' => $row['title'],
+                    'status' => $row['status'],
+                    'featured' => (int) $row['featured'],
+                    'source' => $row['source'],
+                    'year' => $row['release_year'] !== null ? (int) $row['release_year'] : null,
+                    'type' => $row['release_type'],
+                    'artists' => [],
+                    'lead_id' => null,
+                    'lead_name' => null,
+                ];
+            }
+            if ($row['artist_id'] !== null) {
+                $releases[$id]['artists'][] = (string) $row['artist_name'];
+                if ($releases[$id]['lead_id'] === null) {
+                    $releases[$id]['lead_id'] = (int) $row['artist_id'];
+                    $releases[$id]['lead_name'] = (string) $row['artist_name'];
+                }
+            }
+        }
+
+        $groups = [];
+        foreach ($releases as $release) {
+            $key = $release['lead_id'] ?? 0;
+            if (!isset($groups[$key])) {
+                $groups[$key] = [
+                    'id' => $release['lead_id'],
+                    'name' => $release['lead_name'] ?? 'Ohne Artist',
+                    'releases' => [],
+                ];
+            }
+            $groups[$key]['releases'][] = $release;
+        }
+        uasort($groups, static function (array $a, array $b): int {
+            if ($a['id'] === null) {
+                return 1;
+            }
+            if ($b['id'] === null) {
+                return -1;
+            }
+            return strcasecmp((string) $a['name'], (string) $b['name']);
+        });
+
+        return [
+            'groups' => array_values($groups),
+            'total' => count($releases),
+            'filters' => ['q' => $q, 'artist' => $artist, 'status' => $status, 'type' => $type, 'year' => $year],
+            'artists' => $this->db->all(
+                'SELECT DISTINCT a.id, a.name FROM artists a JOIN release_artists ra ON ra.artist_id = a.id ORDER BY a.name'
+            ),
+            'years' => array_column(
+                $this->db->all('SELECT DISTINCT release_year FROM releases WHERE release_year IS NOT NULL ORDER BY release_year DESC'),
+                'release_year'
+            ),
+        ];
     }
 
     private function releaseForm(int $id): void
