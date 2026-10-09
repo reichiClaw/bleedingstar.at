@@ -320,7 +320,14 @@ final class Admin
 
     private function artists(): void
     {
-        $rows = $this->db->all('SELECT id, name, status, slug FROM artists ORDER BY name');
+        $rows = $this->db->all(
+            "SELECT a.id, a.name, a.status, a.slug,
+                    GROUP_CONCAT(r.role_name ORDER BY r.role_name SEPARATOR ' · ') AS roles
+             FROM artists a
+             LEFT JOIN artist_roles r ON r.artist_id = a.id
+             GROUP BY a.id, a.name, a.status, a.slug
+             ORDER BY a.name"
+        );
         $this->render('admin/artists', ['rows' => $rows, 'title' => 'Artists']);
     }
 
@@ -331,7 +338,30 @@ final class Admin
             $this->missing();
             return;
         }
-        $this->render('admin/artist', ['row' => $row, 'title' => $row['name']]);
+        $roles = array_column(
+            $this->db->all('SELECT role_name FROM artist_roles WHERE artist_id = ? ORDER BY role_name', [$id]),
+            'role_name'
+        );
+        $this->render('admin/artist', ['row' => $row, 'roles' => $roles, 'title' => $row['name']]);
+    }
+
+    /** @param list<string> $selected */
+    public function saveArtistServices(int $id, array $selected): void
+    {
+        $known = ['Vertrieb', 'Booking', 'Managing'];
+        $keep = [];
+        foreach ($known as $role) {
+            if (in_array($role, $selected, true)) {
+                $keep[] = $role;
+            }
+        }
+        $this->db->exec(
+            'DELETE FROM artist_roles WHERE artist_id = ? AND role_name IN (?,?,?)',
+            [$id, $known[0], $known[1], $known[2]]
+        );
+        foreach ($keep as $role) {
+            $this->db->exec('INSERT INTO artist_roles (artist_id, role_name) VALUES (?,?)', [$id, $role]);
+        }
     }
 
     private function artistSave(int $id): void
@@ -359,6 +389,8 @@ final class Admin
             "UPDATE artists SET name=?, bio_html=?, status=?, website=?, editorial_locked=1, updated_at=NOW() $imageSql WHERE id=?",
             $params
         );
+        $posted = $_POST['roles'] ?? [];
+        $this->saveArtistServices($id, is_array($posted) ? $posted : []);
         header('Location: /admin/artists/' . $id, true, 303);
     }
 

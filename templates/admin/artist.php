@@ -7,6 +7,14 @@
       <select name="status"><?php foreach (['published','draft','hidden'] as $st): ?><option <?= $row['status']===$st?'selected':'' ?>><?= $st ?></option><?php endforeach; ?></select>
     </label>
     <label>Website <input name="website" value="<?= e((string)$row['website']) ?>"></label>
+    <fieldset>
+      <legend>Leistungen</legend>
+      <div class="checks">
+        <?php foreach (['Vertrieb', 'Booking', 'Managing'] as $role): ?>
+          <label><input type="checkbox" name="roles[]" value="<?= e($role) ?>" <?= in_array($role, $roles, true) ? 'checked' : '' ?>> <?= e($role) ?></label>
+        <?php endforeach; ?>
+      </div>
+    </fieldset>
     <label>Text <textarea name="bio_html" rows="10"><?= e($row['bio_html']) ?></textarea></label>
     <label>Bild <input type="file" name="image" accept="image/*"></label>
     <button class="btn btn-accent" type="submit">Speichern</button>
