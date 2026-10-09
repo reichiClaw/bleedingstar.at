@@ -80,11 +80,14 @@ final class LegacyImporter
                 ]
             );
         }
-        $this->db->exec('DELETE FROM artist_roles WHERE artist_id = ?', [$id]);
-        foreach ($artist['categories'] ?? [] as $cat) {
-            $name = $cat['name'] ?? '';
-            if ($name !== '') {
-                $this->db->exec('INSERT IGNORE INTO artist_roles (artist_id, role_name) VALUES (?,?)', [$id, $name]);
+        $locked = $existing && (int) $existing['editorial_locked'] === 1;
+        if (!$locked) {
+            $this->db->exec('DELETE FROM artist_roles WHERE artist_id = ?', [$id]);
+            foreach ($artist['categories'] ?? [] as $cat) {
+                $name = $cat['name'] ?? '';
+                if ($name !== '') {
+                    $this->db->exec('INSERT IGNORE INTO artist_roles (artist_id, role_name) VALUES (?,?)', [$id, $name]);
+                }
             }
         }
         return $id;

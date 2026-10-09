@@ -204,6 +204,10 @@ $gridInfo = $saved ? @getimagesize($coverDir . '/storage/uploads/' . $saved['gri
 check($saved !== null && is_file($coverDir . '/storage/uploads/' . $saved['full']) && $gridInfo && $gridInfo[0] === 640, 'largest cover is kept and a 640px file is generated');
 
 $bioBefore = $db->one('SELECT bio_html FROM artists WHERE slug="supervision"');
+$supervision = $db->one('SELECT id FROM artists WHERE slug="supervision"');
+$rolesBefore = array_column($db->all('SELECT role_name FROM artist_roles WHERE artist_id = ? ORDER BY role_name', [$supervision['id']]), 'role_name');
+$db->exec('DELETE FROM artist_roles WHERE artist_id = ?', [$supervision['id']]);
+$db->exec('INSERT INTO artist_roles (artist_id, role_name) VALUES (?,?)', [$supervision['id'], 'Vertrieb']);
 $db->exec('UPDATE artists SET bio_html=?, editorial_locked=1 WHERE slug="supervision"', ['<p>LOCKED-BIO</p>']);
 $linksBefore = (int) $db->one('SELECT COUNT(*) AS c FROM release_links l JOIN releases r ON r.id = l.release_id WHERE r.slug = "on-the-road-to-calipo-island"')['c'];
 (new LegacyImporter($db, app_root()))->import(app_config()['legacy_export']);
@@ -211,6 +215,12 @@ $linksAfter = (int) $db->one('SELECT COUNT(*) AS c FROM release_links l JOIN rel
 check($linksBefore > 0 && $linksAfter === $linksBefore, 'reimport does not duplicate release links');
 $locked = $db->one('SELECT bio_html, editorial_locked FROM artists WHERE slug="supervision"');
 check($locked['bio_html'] === '<p>LOCKED-BIO</p>' && (int) $locked['editorial_locked'] === 1, 'manual artist text survives reimport');
+$rolesLocked = array_column($db->all('SELECT role_name FROM artist_roles WHERE artist_id = ? ORDER BY role_name', [$supervision['id']]), 'role_name');
+check($rolesLocked === ['Vertrieb'], 'locked artist services survive reimport');
+$db->exec('DELETE FROM artist_roles WHERE artist_id = ?', [$supervision['id']]);
+foreach ($rolesBefore as $roleName) {
+    $db->exec('INSERT INTO artist_roles (artist_id, role_name) VALUES (?,?)', [$supervision['id'], $roleName]);
+}
 $db->exec('UPDATE artists SET bio_html=?, editorial_locked=0 WHERE slug="supervision"', [$bioBefore['bio_html']]);
 
 $discogsConfig = [
@@ -811,6 +821,25 @@ if ($rentalBefore) {
     $db->exec("DELETE FROM pages WHERE slug = 'rental'");
 }
 
+$serviceId = $db->insert(
+    'INSERT INTO artists (slug, name, status, image_source, created_at, updated_at) VALUES (?, ?, "published", "legacy", NOW(), NOW())',
+    ['zztest-services-' . bin2hex(random_bytes(3)), $marker . ' Services']
+);
+$adminView->saveArtistServices($serviceId, ['Managing', 'Vertrieb', 'Sonstiges']);
+$serviceRoles = array_column($db->all('SELECT role_name FROM artist_roles WHERE artist_id = ? ORDER BY role_name', [$serviceId]), 'role_name');
+check($serviceRoles === ['Managing', 'Vertrieb'], 'artist services save Vertrieb and Managing and ignore unknown roles');
+$adminView->saveArtistServices($serviceId, []);
+check($db->one('SELECT 1 FROM artist_roles WHERE artist_id = ?', [$serviceId]) === null, 'clearing the service checkboxes removes them');
+$db->exec('DELETE FROM artists WHERE id = ?', [$serviceId]);
+$row = ['id' => 1, 'name' => 'Probe', 'status' => 'published', 'website' => '', 'bio_html' => ''];
+$roles = ['Booking'];
+ob_start();
+include app_root() . '/templates/admin/artist.php';
+$artistForm = (string) ob_get_clean();
+check(
+    str_contains($artistForm, 'value="Vertrieb"') && str_contains($artistForm, 'value="Booking" checked') && str_contains($artistForm, 'value="Managing"'),
+    'the artist form offers Vertrieb, Booking and Managing'
+);
 check(isset(contact_topics()['vinyl.codes']) && contact_topics()['vinyl.codes'] === 'vinyl.codes', 'vinyl.codes is an inquiry topic');
 $featured = null;
 $releases = [];
