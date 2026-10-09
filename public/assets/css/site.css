@@ -342,7 +342,7 @@ main:focus { outline: none; }
   color: var(--ink);
   text-decoration: none;
 }
-.brand__logo { display: block; height: 32px; width: auto; }
+.brand__logo { display: block; height: 44px; width: auto; }
 .brand__tag {
   padding: 0.15rem 0.5rem;
   border: 1px solid var(--accent);
