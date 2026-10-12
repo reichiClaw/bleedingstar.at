@@ -556,17 +556,58 @@ final class Admin
     {
         $runs = $this->db->all('SELECT * FROM sync_runs ORDER BY id DESC LIMIT 20');
         $pending = is_file(app_root() . '/storage/jobs/sync.request');
-        $this->render('admin/sync', ['runs' => $runs, 'pending' => $pending, 'title' => 'Sync']);
+        $this->render('admin/sync', [
+            'runs' => $runs,
+            'pending' => $pending,
+            'spotifyConfigured' => Spotify\Links::configured(source_config($this->config, 'spotify')),
+            'title' => 'Sync',
+        ]);
     }
 
     private function syncRequest(): void
+    {
+        if (($_POST['action'] ?? '') === 'run') {
+            $this->startCatalogueJob();
+        } else {
+            $this->queueCatalogueJob();
+        }
+        header('Location: /admin/sync', true, 303);
+    }
+
+    /** Leaves a marker for the next cron run. The import itself stays outside this request. */
+    public function queueCatalogueJob(): void
     {
         $dir = app_root() . '/storage/jobs';
         if (!is_dir($dir)) {
             mkdir($dir, 0775, true);
         }
         file_put_contents($dir . '/sync.request', date('c') . "\n");
-        header('Location: /admin/sync', true, 303);
+    }
+
+    /**
+     * Runs the same catalogue job as /jobs/run, inside the admin session.
+     * The cron token stays in the config and is never sent to the browser.
+     *
+     * @return array{status:string, stats:array, line:string}
+     */
+    public function startCatalogueJob(): array
+    {
+        ignore_user_abort(true);
+        $runner = new JobRunner($this->db, app_root());
+        $result = $runner->run('sync-releases', false, fn () => $runner->syncReleases($this->config, false, null));
+        $this->flash(self::syncResultMessage($result), ($result['status'] ?? '') === 'ok');
+        return $result;
+    }
+
+    public static function syncResultMessage(array $result): string
+    {
+        $line = trim((string) ($result['line'] ?? ''));
+        return match ($result['status'] ?? '') {
+            'locked' => 'Ein anderer Lauf ist gerade aktiv.',
+            'ok' => trim('Der Job ist durchgelaufen. ' . $line),
+            'quota' => trim('Der Job wurde gestartet und hat an einem Kontingent angehalten. ' . $line),
+            default => trim('Der Job wurde gestartet und mit Fehlern beendet. ' . $line),
+        };
     }
 
     private function missing(): void
@@ -607,9 +648,10 @@ final class Admin
         }
     }
 
-    private function flash(string $message): void
+    private function flash(string $message, bool $ok = false): void
     {
         $_SESSION['admin_flash'] = $message;
+        $_SESSION['admin_flash_ok'] = $ok;
     }
 
     private function render(string $template, array $data): void
@@ -620,7 +662,12 @@ final class Admin
             'adminUser' => $this->auth->user(),
         ]);
         $flash = $_SESSION['admin_flash'] ?? null;
-        unset($_SESSION['admin_flash']);
-        echo $view->render($template, $data + ['admin' => true, 'flash' => $flash]);
+        $flashOk = !empty($_SESSION['admin_flash_ok']);
+        unset($_SESSION['admin_flash'], $_SESSION['admin_flash_ok']);
+        if (!is_string($flash) || $flash === '') {
+            $flash = null;
+            $flashOk = false;
+        }
+        echo $view->render($template, $data + ['admin' => true, 'flash' => $flash, 'flashOk' => $flashOk]);
     }
 }

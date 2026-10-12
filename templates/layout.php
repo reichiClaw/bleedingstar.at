@@ -85,7 +85,7 @@ $nav = [
 </header>
 <main id="inhalt" tabindex="-1">
 <?php if (!empty($flash)): ?>
-  <div class="wrap"><p class="error" role="alert"><?= e($flash) ?></p></div>
+  <div class="wrap"><p class="<?= !empty($flashOk) ? 'note' : 'error' ?>" role="<?= !empty($flashOk) ? 'status' : 'alert' ?>"><?= e($flash) ?></p></div>
 <?php endif; ?>
 <?= $content ?>
 </main>

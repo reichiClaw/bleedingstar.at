@@ -866,5 +866,28 @@ if ($inquiryLinks->length === 1) {
 }
 check($inquiryLinks->length === 1 && !$inquiryNested, 'the vinyl.codes inquiry link is its own link');
 
+$runs = [];
+$pending = false;
+$spotifyConfigured = true;
+ob_start();
+include app_root() . '/templates/admin/sync.php';
+$syncReady = (string) ob_get_clean();
+check(str_contains($syncReady, 'Die Spotify-Zugangsdaten sind eingetragen.'), 'the sync page says the Spotify credentials are set');
+check(!str_contains($syncReady, 'sobald Zugangsdaten eingetragen sind'), 'the sync page drops the missing-credentials caveat once Spotify is configured');
+check(str_contains($syncReady, 'name="action" value="run"') && str_contains($syncReady, 'Cron starten'), 'the sync page has a button that starts the cron job');
+check(!str_contains($syncReady, '/jobs/run'), 'the sync page does not print the cron URL');
+$spotifyConfigured = false;
+ob_start();
+include app_root() . '/templates/admin/sync.php';
+$syncIdle = (string) ob_get_clean();
+check(str_contains($syncIdle, 'sobald Zugangsdaten eingetragen sind'), 'without credentials the sync page still says Spotify joins later');
+$adminView->queueCatalogueJob();
+$syncRequest = app_root() . '/storage/jobs/sync.request';
+check(is_file($syncRequest), 'requesting a sync still only leaves a job file');
+@unlink($syncRequest);
+check(App\Admin::syncResultMessage(['status' => 'locked', 'line' => "Another catalog job is running.\n"]) === 'Ein anderer Lauf ist gerade aktiv.', 'a running job is reported without starting another');
+$done = App\Admin::syncResultMessage(['status' => 'ok', 'line' => "sync-releases run created=0 updated=1 reviews=0 skipped=0 errors=0\n"]);
+check(str_starts_with($done, 'Der Job ist durchgelaufen.') && str_contains($done, 'updated=1'), 'a finished job is reported with its counts');
+
 echo $failed === 0 ? "ALL PASSED\n" : "$failed FAILED\n";
 exit($failed === 0 ? 0 : 1);
