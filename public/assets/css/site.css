@@ -1095,7 +1095,8 @@ main:focus { outline: none; }
 .is-admin .admin-create { grid-template-columns: minmax(0, 1fr) auto; align-items: end; margin-bottom: 1.25rem; }
 .is-admin .admin-create .btn { margin-bottom: 0.15rem; }
 .is-admin .filters { margin-bottom: 2rem; }
-.filters__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.filters__actions, .sync-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.sync-actions { margin-top: 1.25rem; }
 .is-admin .admin-groups { display: grid; gap: 1.75rem; }
 .is-admin .admin-group__head {
   display: flex;

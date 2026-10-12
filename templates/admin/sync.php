@@ -1,12 +1,18 @@
 <section class="wrap section">
   <h1>Sync</h1>
-  <p>Ein Klick startet keinen langen Import im Browser. Er legt nur eine Job-Datei an. Der nächste Cron-Lauf verarbeitet sie – die Web-Adresse <code>/jobs/run?token=…</code> oder die CLI:</p>
+  <?php if (!empty($spotifyConfigured)): ?>
+    <p>Die Spotify-Zugangsdaten sind eingetragen. Jeder Lauf geht Discogs, Deezer, Apple Music, Spotify und den Discogs-Cache durch.</p>
+  <?php else: ?>
+    <p>Spotify ist noch nicht eingerichtet. Jeder Lauf geht Discogs, Deezer, Apple Music und den Discogs-Cache durch. Spotify kommt dazu, sobald die Zugangsdaten eingetragen sind.</p>
+  <?php endif; ?>
+  <p class="note">„Cron starten“ führt denselben Lauf sofort aus wie der geplante Cron. Er beginnt jedes Mal bei einer anderen Quelle, damit das Zeitbudget von 180&nbsp;s fair verteilt ist. Die Seite wartet, bis der Lauf fertig ist. Für Links und Cover gilt Spotify vor Apple Music, dann Deezer, dann Discogs. Hochgeladene und archivierte Cover bleiben.</p>
+  <p class="note">„Sync anfordern“ legt nur eine Job-Datei an. Der nächste Cron-Lauf verarbeitet sie, ebenso die CLI:</p>
   <pre>php bin/sync-releases.php</pre>
-  <p class="note">Jeder Lauf ohne <code>source</code> geht alle Quellen durch (Discogs, Deezer, Apple Music, Spotify sobald Zugangsdaten eingetragen sind, Discogs-Cache) und beginnt jedes Mal mit einer anderen, damit das Zeitbudget von 180 s fair verteilt ist. Für Links und Cover gilt Spotify vor Apple Music, dann Deezer, dann Discogs. Hochgeladene und archivierte Cover bleiben.</p>
   <?php if ($pending): ?><p class="note">Eine Anforderung wartet auf den nächsten Cron-Lauf.</p><?php endif; ?>
-  <form method="post" action="/admin/sync">
+  <form method="post" action="/admin/sync" class="sync-actions">
     <input type="hidden" name="_csrf" value="<?= e(App\Csrf::token()) ?>">
-    <button class="btn btn-accent" type="submit">Sync anfordern</button>
+    <button class="btn btn-accent" type="submit" name="action" value="run">Cron starten</button>
+    <button class="btn" type="submit" name="action" value="request">Sync anfordern</button>
   </form>
   <h2>Protokoll</h2>
   <ul class="lined">
