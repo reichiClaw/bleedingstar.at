@@ -53,6 +53,8 @@ final class Admin
             $method === 'POST' && $head === 'reviews' && isset($parts[1]) => $this->reviewAct((int) $parts[1]),
             $method === 'GET' && $head === 'sync' => $this->sync(),
             $method === 'POST' && $head === 'sync' => $this->syncRequest(),
+            $method === 'GET' && $head === 'settings' => $this->settings(),
+            $method === 'POST' && $head === 'settings' => $this->settingsSave(),
             default => $this->missing(),
         };
     }
@@ -610,6 +612,42 @@ final class Admin
         };
     }
 
+    private function settings(): void
+    {
+        $this->ensureSettings();
+        $this->render('admin/settings', ['grainMode' => grain_mode($this->db), 'title' => 'Einstellungen']);
+    }
+
+    private function settingsSave(): void
+    {
+        $this->saveGrainMode((string) ($_POST['grain'] ?? ''));
+        $this->flash('Die Einstellung ist gespeichert.', true);
+        header('Location: /admin/settings', true, 303);
+    }
+
+    public function saveGrainMode(string $mode): void
+    {
+        $this->ensureSettings();
+        if ($mode !== 'static') {
+            $mode = 'live';
+        }
+        $this->db->exec(
+            'INSERT INTO settings (skey, svalue) VALUES (?, ?) ON DUPLICATE KEY UPDATE svalue = ?',
+            ['grain', $mode, $mode]
+        );
+    }
+
+    private function ensureSettings(): void
+    {
+        $this->db->pdo()->exec(
+            "CREATE TABLE IF NOT EXISTS settings (
+                skey VARCHAR(80) NOT NULL,
+                svalue TEXT NOT NULL,
+                PRIMARY KEY (skey)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+    }
+
     private function missing(): void
     {
         http_response_code(404);
@@ -660,6 +698,7 @@ final class Admin
         $view = new View(app_root() . '/templates', [
             'baseUrl' => rtrim($this->config['base_url'], '/'),
             'adminUser' => $this->auth->user(),
+            'grainMode' => grain_mode($this->db),
         ]);
         $flash = $_SESSION['admin_flash'] ?? null;
         $flashOk = !empty($_SESSION['admin_flash_ok']);

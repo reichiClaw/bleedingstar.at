@@ -502,6 +502,7 @@ final class Web
                 'baseUrl' => rtrim($this->config['base_url'], '/'),
                 'identity' => $this->config['identity'],
                 'catalog' => $this->catalog,
+                'grainMode' => grain_mode(),
             ]);
         }
         return $view;
