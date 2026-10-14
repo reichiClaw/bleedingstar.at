@@ -156,6 +156,18 @@ function request_path(): string
     return $path === '' ? '/' : $path;
 }
 
+/** Moving film grain, or the static tile when the admin setting says so. */
+function grain_mode(?\App\Database $db = null): string
+{
+    try {
+        $db ??= app_db();
+        $row = $db->one('SELECT svalue FROM settings WHERE skey = ?', ['grain']);
+    } catch (Throwable) {
+        return 'live';
+    }
+    return ($row['svalue'] ?? '') === 'static' ? 'static' : 'live';
+}
+
 /** Source settings with defaults, so an older config/config.php keeps working. */
 function source_config(array $config, string $name): array
 {

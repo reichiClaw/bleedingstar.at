@@ -23,7 +23,7 @@ $nav = [
     'projekte' => ['Projekte', '/#projekte'],
 ];
 ?><!DOCTYPE html>
-<html lang="de">
+<html lang="de" data-grain="<?= ($grainMode ?? 'live') === 'static' ? 'static' : 'live' ?>">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -64,6 +64,7 @@ $nav = [
           <li><a href="/admin/reviews">Prüfung</a></li>
           <li><a href="/admin/sync">Sync</a></li>
           <li><a href="/admin/pages">Texte</a></li>
+          <li><a href="/admin/settings">Einstellungen</a></li>
           <li><a href="/">Website</a></li>
         </ul>
         <?php if (!empty($adminUser)): ?>
