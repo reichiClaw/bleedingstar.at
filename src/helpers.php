@@ -24,6 +24,30 @@ function format_release_date(?int $year, ?int $month, ?int $day, string $precisi
     return '';
 }
 
+/**
+ * Whether the release date still lies ahead. A release with a day is upcoming until that day,
+ * one with only a month until that month begins, one with only a year until that year begins.
+ * $today is the local date (configured timezone) and exists for tests.
+ */
+function release_is_upcoming(array $release, ?DateTimeInterface $today = null): bool
+{
+    $today ??= new DateTimeImmutable('today');
+    $year = (int) ($release['release_year'] ?? 0);
+    if ($year <= 0) {
+        return false;
+    }
+    $month = (int) ($release['release_month'] ?? 0);
+    $day = (int) ($release['release_day'] ?? 0);
+    $precision = (string) ($release['release_date_precision'] ?? 'unknown');
+    if ($precision === 'day' && $month > 0 && $day > 0) {
+        return sprintf('%04d-%02d-%02d', $year, $month, $day) > $today->format('Y-m-d');
+    }
+    if ($precision === 'month' && $month > 0) {
+        return sprintf('%04d-%02d', $year, $month) > $today->format('Y-m');
+    }
+    return $year > (int) $today->format('Y');
+}
+
 function release_type_label(?string $type): string
 {
     return match ($type) {
@@ -191,6 +215,7 @@ function source_config(array $config, string $name): array
             'client_secret' => '',
             'market' => 'AT',
             'per_run' => 25,
+            'label_names' => $discogs['allow_label_names'] ?? ['BleedingStar Records'],
             'user_agent' => $discogs['user_agent'] ?? 'BleedingStarCatalog/1.0',
             'timeout' => 20,
         ],

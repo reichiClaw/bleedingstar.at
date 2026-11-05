@@ -9,9 +9,13 @@ $date = format_release_date(
     (string) $release['release_date_precision']
 );
 $type = release_type_label($release['release_type'] ?? null);
+$upcoming = release_is_upcoming($release);
 $year = $date !== '' ? $date : (string) ($release['release_year'] ?? '');
+if ($upcoming && $year !== '') {
+    $year = 'Erscheint ' . ($release['release_date_precision'] === 'day' ? 'am ' : '') . $year;
+}
 ?>
-<article class="card">
+<article class="card<?= $upcoming ? ' card--upcoming' : '' ?>">
   <a class="cover-link" href="/releases/<?= e($release['slug']) ?>">
     <span class="cover">
       <?php if ($cover): ?>
@@ -20,6 +24,7 @@ $year = $date !== '' ? $date : (string) ($release['release_year'] ?? '');
         <span class="ph" aria-hidden="true"><?= e(mb_substr($release['title'], 0, 1)) ?></span>
       <?php endif; ?>
       <?php if ($type): ?><span class="card__type"><?= e($type) ?></span><?php endif; ?>
+      <?php if ($upcoming): ?><span class="card__type card__upcoming">Demnächst</span><?php endif; ?>
     </span>
     <h2 class="card__title"><?= e($release['title']) ?></h2>
   </a>

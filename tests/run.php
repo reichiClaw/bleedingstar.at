@@ -53,6 +53,8 @@ final class FixtureSpotify extends App\Spotify\Links
 {
     public array $queries = [];
 
+    public array $albums = [];
+
     public array $storedCovers = [];
 
     public function __construct(App\Database $db, private array $map)
@@ -66,8 +68,15 @@ final class FixtureSpotify extends App\Spotify\Links
         return $this->map[$query] ?? [];
     }
 
+    protected function searchPage(string $query, int $limit, int $offset, string $type = 'album', bool $withMarket = true): array
+    {
+        $this->queries[] = $query . '@' . $offset;
+        return $this->map['page:' . $query . ':' . $offset] ?? ['items' => [], 'total' => 0];
+    }
+
     protected function albumById(string $id): ?array
     {
+        $this->albums[] = $id;
         return $this->map['album:' . $id] ?? null;
     }
 
@@ -86,6 +95,11 @@ final class QuotaSpotify extends App\Spotify\Links
     }
 
     protected function search(string $query, int $limit, string $type = 'album', bool $withMarket = true): array
+    {
+        throw new App\Spotify\SpotifyException('Spotify quota reached, next run continues', true);
+    }
+
+    protected function searchPage(string $query, int $limit, int $offset, string $type = 'album', bool $withMarket = true): array
     {
         throw new App\Spotify\SpotifyException('Spotify quota reached, next run continues', true);
     }
@@ -602,6 +616,159 @@ foreach ([$spotifyKept, $spotifyUpc, $spotifyTitle, $spotifyAmbiguous, $spotifyT
 }
 $db->exec('DELETE FROM artists WHERE id = ?', [$spotifyArtist]);
 $db->exec("DELETE FROM provider_records WHERE provider = 'spotify' AND payload_json = '{\"fixture\":\"shield\"}'");
+
+// Spotify label import: new releases are created, known ones linked, uncertain ones reviewed.
+$today = new DateTimeImmutable('2026-11-06');
+check(release_is_upcoming(['release_year' => 2026, 'release_month' => 11, 'release_day' => 7, 'release_date_precision' => 'day'], $today), 'tomorrow is upcoming');
+check(!release_is_upcoming(['release_year' => 2026, 'release_month' => 11, 'release_day' => 6, 'release_date_precision' => 'day'], $today), 'the release day itself is no longer upcoming');
+check(release_is_upcoming(['release_year' => 2026, 'release_month' => 12, 'release_day' => null, 'release_date_precision' => 'month'], $today), 'a month ahead is upcoming');
+check(!release_is_upcoming(['release_year' => 2026, 'release_month' => 11, 'release_day' => null, 'release_date_precision' => 'month'], $today), 'the current month is not upcoming');
+check(release_is_upcoming(['release_year' => 2027, 'release_month' => null, 'release_day' => null, 'release_date_precision' => 'year'], $today) && !release_is_upcoming(['release_year' => 2026, 'release_date_precision' => 'year'], $today), 'only a later year is upcoming');
+check(!release_is_upcoming(['release_year' => null, 'release_date_precision' => 'unknown'], $today), 'no date is not upcoming');
+
+$importArtist = $db->insert(
+    'INSERT INTO artists (slug, name, status, image_source, created_at, updated_at) VALUES (?, ?, "published", "legacy", NOW(), NOW())',
+    ['spotify-import-band', 'Import Fixture Band']
+);
+$importRelease = static function (string $slug, string $title, string $source = 'legacy') use ($db, $importArtist): int {
+    $id = $db->insert(
+        'INSERT INTO releases (slug, title, release_year, release_date_precision, status, source, created_at, updated_at) VALUES (?, ?, 2020, "year", "published", ?, NOW(), NOW())',
+        [$slug, $title, $source]
+    );
+    $db->exec('INSERT INTO release_artists (release_id, artist_id, position) VALUES (?, ?, 0)', [$id, $importArtist]);
+    return $id;
+};
+$importByUpc = $importRelease('spotify-import-upc', 'Known Album');
+$db->exec('INSERT INTO release_formats (release_id, name, upc) VALUES (?, "CD", "444000000000001")', [$importByUpc]);
+$importByTitle = $importRelease('spotify-import-title', 'Same Title');
+$importLoose = $importRelease('spotify-import-loose', 'Loose Title (Live)');
+$importKnown = $importRelease('spotify-import-known', 'Already Known');
+$db->exec('INSERT INTO release_links (release_id, label, url, provider, manual) VALUES (?, "Spotify", "https://open.spotify.com/album/known000000000000000001", "spotify", 0)', [$importKnown]);
+$importItem = static function (string $id, string $name, string $date, string $precision = 'day', array $extra = []): array {
+    return $extra + [
+        'id' => $id,
+        'name' => $name,
+        'album_type' => 'single',
+        'total_tracks' => 1,
+        'release_date' => $date,
+        'release_date_precision' => $precision,
+        'artists' => [['id' => 'artist0000000000000001', 'name' => 'Import Fixture Band']],
+        'external_urls' => ['spotify' => 'https://open.spotify.com/album/' . $id . '?si=abc'],
+        'images' => [['url' => 'https://i.scdn.co/image/' . $id, 'width' => 640, 'height' => 640]],
+    ];
+};
+$importFull = static function (array $item, string $upc, array $tracks, string $copyright = '2026 BleedingStar Records'): array {
+    $items = [];
+    foreach ($tracks as $i => [$name, $ms]) {
+        $items[] = ['disc_number' => 1, 'track_number' => $i + 1, 'name' => $name, 'duration_ms' => $ms];
+    }
+    return $item + [
+        'external_ids' => ['upc' => $upc],
+        'copyrights' => [['text' => $copyright, 'type' => 'P']],
+        'tracks' => ['items' => $items, 'total' => count($items)],
+    ];
+};
+$importItems = [
+    $importItem('known000000000000000001', 'Already Known', '2020-01-01'),
+    $importItem('upc000000000000000000001', 'Known Album', '2020-05-05'),
+    $importItem('exact00000000000000000001', 'Same Title', '2020-06-06'),
+    $importItem('loose00000000000000000001', 'Loose Title', '2020-07-07'),
+    $importItem('foreign0000000000000000001', 'Not Ours', '2024-01-01'),
+    $importItem('new0000000000000000000001', 'Brand New Single', '2999-01-01'),
+    $importItem('newep000000000000000000001', 'Fresh EP', '2999-03', 'month', ['total_tracks' => 5]),
+];
+$importMap = [
+    'page:label:"BleedingStar Records":0' => ['items' => array_slice($importItems, 0, 5), 'total' => 7],
+    'page:label:"BleedingStar Records":5' => ['items' => array_slice($importItems, 5), 'total' => 7],
+    'album:upc000000000000000000001' => $importFull($importItems[1], '444000000000001', [['Known Album', 200000]]),
+    'album:exact00000000000000000001' => $importFull($importItems[2], '444000000000002', [['Same Title', 200000]]),
+    'album:loose00000000000000000001' => $importFull($importItems[3], '444000000000003', [['Loose Title', 200000]]),
+    'album:foreign0000000000000000001' => $importFull($importItems[4], '444000000000004', [['Not Ours', 200000]], '2024 Somebody Else'),
+    'album:new0000000000000000000001' => $importFull($importItems[5], '4070169337824', [['Brand New Single', 246873]]),
+    'album:newep000000000000000000001' => $importFull($importItems[6], '444000000000006', [['One', 60000], ['Two', 60000], ['Three', 60000], ['Four', 60000], ['Five', 60000]]),
+];
+$importLinks = new FixtureSpotify($db, $importMap);
+$importConfig = ['enabled' => true, 'client_id' => 'fixture-id', 'client_secret' => 'fixture-secret', 'label_names' => ['BleedingStar Records']];
+$import = new App\Spotify\Sync($db, $importLinks, $importConfig);
+$importStats = $import->importLabel(false);
+check($importStats['created'] === 2 && $importStats['updated'] === 2 && $importStats['reviews'] === 1 && $importStats['skipped'] === 1 && $importStats['errors'] === 0, 'label import creates two, links two, reviews one and skips the foreign album: ' . json_encode($importStats));
+check(!in_array('known000000000000000001', $importLinks->albums, true), 'an album behind a stored Spotify link is not fetched again');
+check(($importLinks->albums[0] ?? '') === 'newep000000000000000000001' && ($importLinks->albums[1] ?? '') === 'new0000000000000000000001', 'the newest albums are handled first');
+check(count(array_filter($importLinks->queries, static fn (string $q): bool => str_starts_with($q, 'label:'))) === 2, 'the label search follows the total over two pages');
+$importNew = $catalog->findRelease('brand-new-single');
+check($importNew !== null && $importNew['source'] === 'spotify' && $importNew['status'] === 'published', 'the new single is a published Spotify release');
+check($importNew !== null && (int) $importNew['release_year'] === 2999 && (int) $importNew['release_month'] === 1 && (int) $importNew['release_day'] === 1 && $importNew['release_date_precision'] === 'day' && $importNew['release_type'] === 'single', 'the new single keeps the Spotify date and type');
+check($importNew !== null && count($importNew['artists']) === 1 && (int) $importNew['artists'][0]['id'] === $importArtist, 'the new single is attached to the existing artist by name');
+check($db->one("SELECT 1 FROM external_ids WHERE provider = 'spotify' AND entity_type = 'artist' AND entity_id = ? AND external_id = 'artist0000000000000001'", [$importArtist]) !== null, 'the artist id from Spotify is recorded');
+check($importNew !== null && count($importNew['tracks']) === 1 && $importNew['tracks'][0]['duration'] === '4:06', 'the track list comes with the duration');
+check($importNew !== null && ($importNew['formats'][0]['upc'] ?? '') === '4070169337824', 'the UPC becomes a digital format');
+check($importNew !== null && count($importNew['links']) === 1 && $importNew['links'][0]['url'] === 'https://open.spotify.com/album/new0000000000000000000001', 'the Spotify link is stored without the tracking query');
+check($importNew !== null && $importNew['cover_source'] === 'spotify' && ($importLinks->storedCovers[(int) $importNew['id']] ?? '') === 'https://i.scdn.co/image/new0000000000000000000001', 'the cover comes from Spotify');
+check($importNew !== null && release_is_upcoming($importNew), 'a release dated ahead counts as upcoming');
+$importEp = $catalog->findRelease('fresh-ep');
+check($importEp !== null && $importEp['release_type'] === 'ep' && $importEp['release_date_precision'] === 'month' && (int) $importEp['release_month'] === 3, 'a five-track single is filed as EP with its month');
+check($db->one("SELECT 1 FROM release_links WHERE release_id = ? AND provider = 'spotify' AND url LIKE '%upc000000000000000000001'", [$importByUpc]) !== null, 'the UPC match links the existing release');
+check($db->one("SELECT 1 FROM external_ids WHERE provider = 'spotify' AND entity_type = 'release' AND entity_id = ? AND external_id = 'exact00000000000000000001'", [$importByTitle]) !== null, 'same artist and title link automatically');
+check($db->one("SELECT 1 FROM release_formats WHERE release_id = ? AND upc = '444000000000002'", [$importByTitle]) !== null, 'the linked release receives the UPC');
+$importReview = $db->one("SELECT * FROM import_reviews WHERE provider = 'spotify' AND external_id = 'loose00000000000000000001' AND status = 'open'");
+check($importReview !== null && (int) $importReview['candidate_release_id'] === $importLoose, 'a loose title match becomes a review');
+$importPayload = $importReview ? json_decode((string) $importReview['payload_json'], true) : [];
+check(($importPayload['title'] ?? '') === 'Loose Title' && str_starts_with((string) ($importPayload['link'] ?? ''), 'https://open.spotify.com/album/loose'), 'the review payload carries title and link for the admin list');
+check($db->one('SELECT id FROM releases WHERE title = "Not Ours"') === null, 'an album whose copyright names another label is not created');
+$importAgainLinks = new FixtureSpotify($db, $importMap);
+$importAgain = (new App\Spotify\Sync($db, $importAgainLinks, $importConfig))->importLabel(false);
+check($importAgain['created'] === 0 && $importAgain['updated'] === 0 && $importAgain['reviews'] === 1 && count($importAgainLinks->albums) === 2, 'a second run only looks at the review and the foreign album again');
+check((new App\Spotify\Sync($db, $importLinks, $importConfig))->mergeReview((int) $importReview['id']), 'a Spotify review can be merged');
+check($db->one("SELECT 1 FROM release_links WHERE release_id = ? AND provider = 'spotify'", [$importLoose]) !== null && $db->one("SELECT status FROM import_reviews WHERE id = ?", [$importReview['id']])['status'] === 'merged', 'merging adds the link and closes the review');
+$importDryMap = $importMap + ['album:known000000000000000001' => $importFull($importItems[0], '444000000000009', [['Already Known', 1000]])];
+$db->exec('DELETE FROM release_links WHERE release_id = ?', [$importKnown]);
+$importCountBefore = (int) $db->one('SELECT COUNT(*) AS c FROM releases')['c'];
+$importDry = (new App\Spotify\Sync($db, new FixtureSpotify($db, $importDryMap), $importConfig))->importLabel(true);
+check($importDry['skipped'] === 1 && $importDry['created'] === 0 && $importDry['updated'] === 1, 'a dry run reports what it would link');
+check((int) $db->one('SELECT COUNT(*) AS c FROM releases')['c'] === $importCountBefore && $db->one("SELECT 1 FROM release_links WHERE release_id = ?", [$importKnown]) === null, 'a dry run writes nothing');
+$importQuota = new App\Spotify\Sync($db, new QuotaSpotify($db), $importConfig);
+$importQuotaStats = $importQuota->importLabel(false);
+check($importQuotaStats['errors'] === 1 && str_contains($importQuotaStats['message'], 'quota') && $importQuota->halted(), 'a quota stop halts the Spotify source');
+$importExpired = (new App\Spotify\Sync($db, new FixtureSpotify($db, $importMap), $importConfig))->importLabel(false, microtime(true) - 1);
+check($importExpired['created'] === 0 && str_contains($importExpired['message'], 'time budget'), 'the label import stops before the first request once the time budget is spent');
+$importOff = (new App\Spotify\Sync($db, new App\Spotify\Links($db, ['enabled' => true, 'client_id' => '', 'client_secret' => '']), ['enabled' => true, 'client_id' => '', 'client_secret' => '']))->importLabel(false);
+check($importOff['errors'] === 0 && str_contains($importOff['message'], 'not configured'), 'the label import stays idle without credentials');
+$importSum = App\JobRunner::addStats(['created' => 2, 'updated' => 1, 'reviews' => 0, 'errors' => 0, 'skipped' => 1, 'message' => 'time budget reached, next run continues'], ['created' => 0, 'updated' => 3, 'reviews' => 0, 'errors' => 0, 'skipped' => 0, 'message' => 'time budget reached, next run continues']);
+check($importSum['created'] === 2 && $importSum['updated'] === 4 && $importSum['skipped'] === 1 && $importSum['message'] === 'time budget reached, next run continues', 'import and link pass add up to one Spotify result');
+check(in_array('label_names', array_keys(source_config(['discogs' => ['allow_label_names' => ['X Records']]], 'spotify')), true) && source_config(['discogs' => ['allow_label_names' => ['X Records']]], 'spotify')['label_names'] === ['X Records'], 'Spotify label names default to the Discogs allow-list');
+$release = $importNew;
+$eager = false;
+ob_start();
+include app_root() . '/templates/partials/card.php';
+$cardHtml = (string) ob_get_clean();
+check(str_contains($cardHtml, 'card--upcoming') && str_contains($cardHtml, 'Demnächst') && str_contains($cardHtml, 'Erscheint am 01.01.2999'), 'the card marks an upcoming release');
+$release = $catalog->findRelease('spotify-import-upc');
+ob_start();
+include app_root() . '/templates/partials/card.php';
+$cardHtml = (string) ob_get_clean();
+check(!str_contains($cardHtml, 'Demnächst') && !str_contains($cardHtml, 'Erscheint'), 'a released card carries no upcoming mark');
+$release = $importNew;
+$GLOBALS['csp_nonce'] = '';
+ob_start();
+include app_root() . '/templates/release.php';
+$releaseHtml = (string) ob_get_clean();
+check(str_contains($releaseHtml, '<span class="upcoming">Demnächst</span>') && str_contains($releaseHtml, 'Single · Erscheint am 01.01.2999'), 'the release page announces the date ahead');
+$featured = $importNew;
+$releases = [];
+$artists = [];
+$total = 1;
+ob_start();
+include app_root() . '/templates/home.php';
+$homeHtml = (string) ob_get_clean();
+check(str_contains($homeHtml, 'hero--upcoming') && str_contains($homeHtml, '>Demnächst<') && str_contains($homeHtml, 'erscheint am 01.01.2999'), 'the home hero shows the next release as upcoming');
+foreach ($db->all("SELECT id FROM releases WHERE slug IN ('brand-new-single', 'fresh-ep') OR id IN (?, ?, ?, ?)", [$importByUpc, $importByTitle, $importLoose, $importKnown]) as $row) {
+    $db->exec("DELETE FROM provider_records WHERE provider = 'spotify' AND entity_type = 'release' AND external_id = ?", [(string) $row['id']]);
+    $db->exec("DELETE FROM external_ids WHERE entity_type = 'release' AND entity_id = ?", [$row['id']]);
+    $db->exec('DELETE FROM releases WHERE id = ?', [$row['id']]);
+}
+$db->exec("DELETE FROM import_reviews WHERE provider = 'spotify' AND external_id LIKE '%00000000000000001'");
+$db->exec("DELETE FROM external_ids WHERE provider = 'spotify' AND entity_type = 'artist' AND entity_id = ?", [$importArtist]);
+$db->exec('DELETE FROM artists WHERE id = ?', [$importArtist]);
 check(App\JobRunner::deadline(['job_time_budget' => 0]) === null, 'job_time_budget 0 means no deadline');
 check(abs((App\JobRunner::deadline(['job_time_budget' => 150], 1000.0) ?? 0) - 1150.0) < 0.001, 'job_time_budget sets the deadline from the request start');
 check(App\JobRunner::deadline([], 1000.0) === ((int) ini_get('max_execution_time') > 0 ? 1000.0 + max(20, (int) ini_get('max_execution_time') - 30) : null), 'without config the deadline follows max_execution_time');

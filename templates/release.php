@@ -7,6 +7,8 @@ $date = format_release_date(
     (string) $release['release_date_precision']
 );
 $type = release_type_label($release['release_type'] ?? null);
+$upcoming = release_is_upcoming($release);
+$dateLine = $date !== '' && $upcoming ? 'Erscheint ' . ($release['release_date_precision'] === 'day' ? 'am ' : '') . $date : $date;
 $artistsLd = [];
 foreach ($release['artists'] as $artist) {
     $artistsLd[] = ['@type' => 'MusicGroup', 'name' => $artist['name']];
@@ -35,7 +37,7 @@ if ($release['release_date_precision'] === 'day' && $release['release_year'] && 
 ?>
 <article class="section section--page release">
   <div class="wrap">
-    <p class="eyebrow"><a href="/releases">Releases</a></p>
+    <p class="eyebrow"><a href="/releases">Releases</a><?php if ($upcoming): ?> · <span class="upcoming">Demnächst</span><?php endif; ?></p>
     <div class="release-hero">
       <figure class="release-hero__figure">
         <div class="cover lg">
@@ -56,7 +58,7 @@ if ($release['release_date_precision'] === 'day' && $release['release_year'] && 
             <?php else: ?><?= e($artist['name']) ?><?php endif; ?>
           <?php endforeach; ?>
         </p>
-        <p class="meta"><?= e(trim($type . ($date ? ' · ' . $date : ''))) ?><?= $factLine ? ' · ' . e(implode(' · ', $factLine)) : '' ?></p>
+        <p class="meta"><?= e(implode(' · ', array_filter([$type, $dateLine]))) ?><?= $factLine ? ' · ' . e(implode(' · ', $factLine)) : '' ?></p>
         <?php if ($release['formats']): ?>
           <ul class="formats">
             <?php foreach ($release['formats'] as $format): ?>

@@ -60,13 +60,16 @@ return [
     // (Web API, Client Credentials; the redirect URI is unused) and paste its id and secret.
     // The source stays off until both values are set and enabled is true. The app owner
     // needs Spotify Premium while the app remains in development mode.
-    // Once enabled, Spotify is the preferred source for links and covers, then Apple Music,
-    // then Deezer, then Discogs. Archive covers and uploads stay.
+    // Once enabled, every run searches Spotify for the label names and creates releases the
+    // catalogue lacks (a future release date shows as upcoming). Spotify is also the preferred
+    // source for links and covers, then Apple Music, then Deezer, then Discogs. Archive covers
+    // and uploads stay. label_names defaults to the Discogs allow_label_names.
     'spotify' => [
         'enabled' => false,
         'client_id' => '',
         'client_secret' => '',
         'market' => 'AT',
+        'label_names' => ['BleedingStar Records'],
     ],
     'legacy_export' => dirname(__DIR__) . '/data/content.json',
 ];

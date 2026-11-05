@@ -546,6 +546,9 @@ final class Admin
             if (($review['provider'] ?? '') === 'deezer') {
                 $deezer = source_config($this->config, 'deezer');
                 (new \App\Deezer\Sync(app_db(), new \App\Deezer\Client($deezer), $deezer))->mergeReview($id);
+            } elseif (($review['provider'] ?? '') === 'spotify') {
+                $spotify = source_config($this->config, 'spotify');
+                (new Spotify\Sync(app_db(), new Spotify\Links(app_db(), $spotify), $spotify))->mergeReview($id);
             } elseif ($review) {
                 $sync = new Sync(app_db(), new \App\Discogs\Client($this->config['discogs']), $this->config['discogs']);
                 $sync->mergeReview($id);

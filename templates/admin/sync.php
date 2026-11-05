@@ -1,7 +1,7 @@
 <section class="wrap section">
   <h1>Sync</h1>
   <?php if (!empty($spotifyConfigured)): ?>
-    <p>Die Spotify-Zugangsdaten sind eingetragen. Jeder Lauf geht Discogs, Deezer, Apple Music, Spotify und den Discogs-Cache durch.</p>
+    <p>Die Spotify-Zugangsdaten sind eingetragen. Jeder Lauf geht Discogs, Deezer, Apple Music, Spotify und den Discogs-Cache durch. Spotify wird dabei nach neuen Label-Releases durchsucht; was noch fehlt, wird angelegt. Ein Release mit einem Datum in der Zukunft erscheint auf der Seite als „Demnächst“.</p>
   <?php else: ?>
     <p>Spotify ist noch nicht eingerichtet. Jeder Lauf geht Discogs, Deezer, Apple Music und den Discogs-Cache durch. Spotify kommt dazu, sobald die Zugangsdaten eingetragen sind.</p>
   <?php endif; ?>
