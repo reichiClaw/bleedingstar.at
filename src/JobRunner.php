@@ -125,7 +125,13 @@ final class JobRunner
                 return (new Apple\Links($this->db, $apple))->run($dry, (int) ($apple['per_run'] ?? 25), $deadline);
             case 'spotify':
                 $spotify = source_config($config, 'spotify');
-                return (new Spotify\Links($this->db, $spotify))->run($dry, (int) ($spotify['per_run'] ?? 25), $deadline);
+                $links = new Spotify\Links($this->db, $spotify);
+                $import = new Spotify\Sync($this->db, $links, $spotify);
+                $created = $import->importLabel($dry, $deadline);
+                if ($import->halted()) {
+                    return $created;
+                }
+                return self::addStats($created, $links->run($dry, (int) ($spotify['per_run'] ?? 25), $deadline));
             case 'cache':
                 $sync = new Discogs\Sync($this->db, new Discogs\Client($config['discogs']), $config['discogs'], $this->root);
                 return $sync->refreshCache($dry, $deadline);
@@ -168,6 +174,18 @@ final class JobRunner
             $budget = $limit > 0 ? $limit - 30 : 0;
         }
         return $budget > 0 ? $start + max(20, $budget) : null;
+    }
+
+    /** Sums two passes of the same source into one stats array; a repeated time-budget note is kept once. */
+    public static function addStats(array $first, array $second): array
+    {
+        $total = $first;
+        foreach (['created', 'updated', 'reviews', 'errors', 'skipped'] as $key) {
+            $total[$key] = (int) ($first[$key] ?? 0) + (int) ($second[$key] ?? 0);
+        }
+        $messages = array_values(array_unique(array_filter([trim((string) ($first['message'] ?? '')), trim((string) ($second['message'] ?? ''))])));
+        $total['message'] = implode(' ', $messages);
+        return $total;
     }
 
     /** Sums the counters of several sources and joins their messages with the source name. */

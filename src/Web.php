@@ -72,7 +72,7 @@ final class Web
         $description = 'BleedingStar Music Services: Label, Production und Rental.';
         if ($featured) {
             $names = implode(', ', array_column($featured['artists'], 'name'));
-            $description = 'Neu: ' . $featured['title'] . ($names !== '' ? ' von ' . $names : '') . '. ' . $description;
+            $description = (release_is_upcoming($featured) ? 'Demnächst: ' : 'Neu: ') . $featured['title'] . ($names !== '' ? ' von ' . $names : '') . '. ' . $description;
         }
         $this->render('home', [
             'title' => 'BleedingStar',

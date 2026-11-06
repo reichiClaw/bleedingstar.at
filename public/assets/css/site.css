@@ -833,6 +833,13 @@ main:focus { outline: none; }
   text-transform: uppercase;
   color: var(--ink-2);
 }
+.card__upcoming {
+  left: auto;
+  right: 0.6rem;
+  background: var(--accent);
+  color: #fff;
+}
+.card--upcoming .meta, .upcoming, .hero--upcoming .hero__eyebrow { color: var(--accent-ink); }
 .card__title, .card h2 {
   margin: 0.85rem 0 0.15rem;
   font-size: 1.15rem;

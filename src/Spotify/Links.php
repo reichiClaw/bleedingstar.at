@@ -15,7 +15,8 @@ use App\Discogs\Covers;
  * Several exact hits are resolved by type, year and track count; a remaining tie
  * keeps the earliest release Spotify returned. A release without a hit is retried
  * after 30 days. Covers from Spotify replace Apple, Deezer and Discogs artwork.
- * Uploads, archive covers and a locked cover stay.
+ * Uploads, archive covers and a locked cover stay. New label releases are created
+ * by Spotify\Sync, which runs before this lookup and uses the same API access.
  */
 class Links
 {
@@ -52,6 +53,47 @@ class Links
             $stats['message'] = trim($stats['message'] . ' covers ' . $this->covers);
         }
         return $stats;
+    }
+
+    /**
+     * One page of album results for the label import; Spotify's search pages hold at most 10 items.
+     *
+     * @return array{items: array<int, array>, total: int}
+     * @throws SpotifyException
+     */
+    public function labelPage(string $query, int $offset): array
+    {
+        return $this->searchPage($query, 10, $offset, 'album', false);
+    }
+
+    /** Full album object (UPC, tracks, copyrights) or null when Spotify has no page for the id. @throws SpotifyException */
+    public function album(string $id): ?array
+    {
+        return $this->albumById($id);
+    }
+
+    /**
+     * Stores the album as the release's Spotify record, adds the album page as a link when
+     * the release has none yet and takes over the cover where the ranking allows it.
+     * Returns true when a link was added.
+     */
+    public function attachAlbum(int $releaseId, array $album): bool
+    {
+        $this->remember($releaseId, $album);
+        $url = (string) ($album['external_urls']['spotify'] ?? '');
+        $added = false;
+        if (preg_match('#^https://open\.spotify\.com/album/[A-Za-z0-9]+#', $url)
+            && $this->db->one("SELECT id FROM release_links WHERE release_id = ? AND provider = 'spotify' LIMIT 1", [$releaseId]) === null) {
+            $this->db->exec(
+                'INSERT INTO release_links (release_id, label, url, provider, manual) VALUES (?,"Spotify",?,"spotify",0)',
+                [$releaseId, strtok($url, '?')]
+            );
+            $added = true;
+        }
+        if ($this->applyCover($releaseId, $album)) {
+            $this->covers++;
+        }
+        return $added;
     }
 
     /** @return bool false when the run must stop (quota or auth); a time budget still allows the cover pass to notice it */
@@ -469,6 +511,17 @@ class Links
      */
     protected function search(string $query, int $limit, string $type = 'album', bool $withMarket = true): array
     {
+        return $this->searchPage($query, $limit, 0, $type, $withMarket)['items'];
+    }
+
+    /**
+     * One result page with Spotify's total for the query.
+     *
+     * @return array{items: array<int, array>, total: int}
+     * @throws SpotifyException
+     */
+    protected function searchPage(string $query, int $limit, int $offset, string $type = 'album', bool $withMarket = true): array
+    {
         if (!in_array($type, ['album', 'track'], true)) {
             $type = 'album';
         }
@@ -479,6 +532,9 @@ class Links
             'type' => $type,
             'limit' => max(1, min(10, $limit)),
         ];
+        if ($offset > 0) {
+            $params['offset'] = min(1000, $offset);
+        }
         if ($withMarket) {
             $params['market'] = $market;
         }
@@ -498,7 +554,10 @@ class Links
             throw new SpotifyException('Spotify search failed (HTTP ' . $status . ')', $status >= 500 || $status === 0);
         }
         $key = $type === 'track' ? 'tracks' : 'albums';
-        return array_values(array_filter($data[$key]['items'] ?? [], 'is_array'));
+        return [
+            'items' => array_values(array_filter($data[$key]['items'] ?? [], 'is_array')),
+            'total' => (int) ($data[$key]['total'] ?? 0),
+        ];
     }
 
     /** @throws SpotifyException */

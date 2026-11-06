@@ -84,6 +84,8 @@ $projects = [
         (string) $featured['release_date_precision']
     );
     $type = release_type_label($featured['release_type'] ?? null);
+    $upcoming = release_is_upcoming($featured);
+    $dateLine = $date !== '' && $upcoming ? 'Erscheint ' . ($featured['release_date_precision'] === 'day' ? 'am ' : '') . $date : $date;
     $tracks = $featured['tracks'] ?? [];
     $trackCount = count($tracks);
     $catalogNumber = '';
@@ -97,15 +99,15 @@ $projects = [
     $description = excerpt($featured['description_html'] ?? '', 220);
     $facts = array_filter([
         $type,
-        $date,
+        $dateLine,
         $trackCount ? ($trackCount === 1 ? '1 Track' : $trackCount . ' Tracks') : '',
     ]);
   ?>
-  <section class="hero release-hero-home" aria-labelledby="hero-title">
+  <section class="hero release-hero-home<?= $upcoming ? ' hero--upcoming' : '' ?>" aria-labelledby="hero-title">
     <div class="hero__spot" aria-hidden="true"></div>
     <div class="wrap hero__inner">
       <div class="hero__copy">
-        <p class="eyebrow hero__eyebrow"><?= (int) $featured['featured'] === 1 ? 'Featured Release' : 'Neues Release' ?></p>
+        <p class="eyebrow hero__eyebrow"><?= $upcoming ? 'Demnächst' : ((int) $featured['featured'] === 1 ? 'Featured Release' : 'Neues Release') ?></p>
         <h1 class="hero__title" id="hero-title"><?= e($featured['title']) ?></h1>
         <ul class="hero__roles" aria-label="Artists">
           <?php foreach ($featured['artists'] as $artist): ?>
@@ -121,7 +123,7 @@ $projects = [
           <p class="hero__intro"><?= e($description) ?></p>
         <?php elseif ($trackCount <= 1): ?>
           <?php $names = implode(', ', array_column($featured['artists'], 'name')); ?>
-          <p class="hero__intro"><?= e(($type !== '' ? $type : 'Release') . ($names !== '' ? ' von ' . $names : '') . ($date !== '' ? ', erschienen am ' . $date : '')) ?> bei BleedingStar.</p>
+          <p class="hero__intro"><?= e(($type !== '' ? $type : 'Release') . ($names !== '' ? ' von ' . $names : '') . ($date !== '' ? ($upcoming ? ', erscheint ' . ($featured['release_date_precision'] === 'day' ? 'am ' : '') : ', erschienen ' . ($featured['release_date_precision'] === 'day' ? 'am ' : '')) . $date : '')) ?> bei BleedingStar.</p>
         <?php else: ?>
           <ol class="hero__tracks">
             <?php foreach (array_slice($tracks, 0, 4) as $track): ?>
