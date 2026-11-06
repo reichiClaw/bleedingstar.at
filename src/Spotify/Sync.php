@@ -297,20 +297,24 @@ final class Sync
     }
 
     /**
-     * Album ids the catalogue already holds: recorded ids plus the ids in stored Spotify links.
+     * Album ids that need no look-up: recorded ids, the ids in stored Spotify links and
+     * albums whose review was dismissed in the admin (a dismissal is final until the row is removed).
      *
-     * @return array<string, int>
+     * @return array<string, true>
      */
     private function knownAlbumIds(): array
     {
         $known = [];
-        foreach ($this->db->all("SELECT entity_id, external_id FROM external_ids WHERE provider = 'spotify' AND entity_type = 'release'") as $row) {
-            $known[(string) $row['external_id']] = (int) $row['entity_id'];
+        foreach ($this->db->all("SELECT external_id FROM external_ids WHERE provider = 'spotify' AND entity_type = 'release'") as $row) {
+            $known[(string) $row['external_id']] = true;
         }
-        foreach ($this->db->all("SELECT release_id, url FROM release_links WHERE provider = 'spotify'") as $row) {
+        foreach ($this->db->all("SELECT url FROM release_links WHERE provider = 'spotify'") as $row) {
             if (preg_match('#open\.spotify\.com/album/([A-Za-z0-9]+)#', (string) $row['url'], $m)) {
-                $known[$m[1]] = (int) $row['release_id'];
+                $known[$m[1]] = true;
             }
+        }
+        foreach ($this->db->all("SELECT external_id FROM import_reviews WHERE provider = 'spotify' AND status = 'dismissed'") as $row) {
+            $known[(string) $row['external_id']] = true;
         }
         return $known;
     }

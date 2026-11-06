@@ -720,6 +720,13 @@ $importAgain = (new App\Spotify\Sync($db, $importAgainLinks, $importConfig))->im
 check($importAgain['created'] === 0 && $importAgain['updated'] === 0 && $importAgain['reviews'] === 1 && count($importAgainLinks->albums) === 2, 'a second run only looks at the review and the foreign album again');
 check((new App\Spotify\Sync($db, $importLinks, $importConfig))->mergeReview((int) $importReview['id']), 'a Spotify review can be merged');
 check($db->one("SELECT 1 FROM release_links WHERE release_id = ? AND provider = 'spotify'", [$importLoose]) !== null && $db->one("SELECT status FROM import_reviews WHERE id = ?", [$importReview['id']])['status'] === 'merged', 'merging adds the link and closes the review');
+$db->exec(
+    'INSERT INTO import_reviews (provider, external_id, candidate_release_id, payload_json, reason, status, created_at) VALUES ("spotify", "foreign0000000000000000001", NULL, "{}", "test", "dismissed", NOW())'
+);
+$importDismissedLinks = new FixtureSpotify($db, $importMap);
+$importDismissed = (new App\Spotify\Sync($db, $importDismissedLinks, $importConfig))->importLabel(false);
+check($importDismissed['skipped'] === 0 && $importDismissedLinks->albums === [], 'a dismissed review keeps its album out of later runs');
+$db->exec('DELETE FROM import_reviews WHERE provider = "spotify" AND external_id = "foreign0000000000000000001"');
 $importDryMap = $importMap + ['album:known000000000000000001' => $importFull($importItems[0], '444000000000009', [['Already Known', 1000]])];
 $db->exec('DELETE FROM release_links WHERE release_id = ?', [$importKnown]);
 $importCountBefore = (int) $db->one('SELECT COUNT(*) AS c FROM releases')['c'];
